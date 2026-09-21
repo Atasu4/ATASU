@@ -43,8 +43,8 @@ class OddsReq(BaseModel):
     limit: int=Field(200,ge=1,le=2000)
 
 @app.get('/')
-def root(): return FileResponse(ROOT/index.html')
-
+def root():
+    return FileResponse(ROOT / "index.html")
 @app.get('/api/meta')
 def meta():
     return {'history_rows':len(HISTORY),'completed_rows':sum(score(x.get('ft')) is not None for x in HISTORY),'markets':MARKETS,'rule':'Only supplied/stored data are used.'}
