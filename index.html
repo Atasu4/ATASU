@@ -1,194 +1,734 @@
-<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pro Oran Analiz</title><style>
-:root{--bg:#080b10;--card:#11161d;--line:#2a3038;--gold:#d6aa4b;--silver:#e6e9ed;--muted:#9da5ae;--ok:#6fd39a}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0,#2c2415 0,#080b10 28%);color:var(--silver);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:900px;margin:auto;padding:16px 12px 60px}h1{font-size:24px;color:var(--gold);margin:8px 0}p{color:var(--muted);font-size:13px}.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;position:sticky;top:0;background:#080b10e8;padding:10px 0}.tabs button,.go{border:1px solid #665326;background:#16191e;color:var(--silver);padding:12px;border-radius:12px;font-weight:800}.tabs button.on,.go{background:linear-gradient(135deg,#b88a2d,#e1c06d);color:#14100a}.panel{display:none}.panel.on{display:block}.card{background:#11161de8;border:1px solid var(--line);border-radius:16px;padding:14px;margin:10px 0}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}label{font-size:11px;color:var(--muted)}input,select,textarea{width:100%;background:#090d12;border:1px solid #333b45;color:var(--silver);padding:11px;border-radius:10px;font-size:16px;margin-top:4px}.go{width:100%;margin-top:12px}.k{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.k div{background:#0a0f15;border:1px solid #282f38;border-radius:12px;padding:10px}.k b{display:block;color:var(--gold);font-size:20px}.row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #242a31}.row b{color:var(--gold)}small{color:var(--muted)}@media(max-width:600px){.grid{grid-template-columns:1fr 1fr}.k{grid-template-columns:1fr 1fr}}
-</style></head><body><div class="wrap"><h1>ORAN · KOD · +6 ANALİZ</h1><p>Gizli puanlama yok. Uydurma veri yok. Yalnızca kayıtlı gerçek maçlar ve senin girdiğin değerler.</p><div class="tabs"><button class="on" onclick="tab('o',this)">GEÇMİŞ ORAN</button><button onclick="tab('c',this)">MAÇ KODU</button><button onclick="tab('p',this)">+6 GOL</button></div>
-<section id="o" class="panel on"><div class="card"><label>ORAN / KOD BLOĞUNU TOPLU YAPIŞTIR</label><textarea id="bulkOdds" rows="12" style="width:100%;margin-top:8px" placeholder="Maç Sonucu 09614&#10;1&#10;4.38&#10;X&#10;3.51&#10;2&#10;1.51&#10;..."></textarea><div class="g2" style="margin-top:8px"><div><label>Tolerans (±)</label><input id="tol" value="0.05" inputmode="decimal"></div><div><label>Lig filtresi</label><input id="league" placeholder="İsteğe bağlı"></div></div><button class="go" onclick="scanBulkOdds()">OTOMATİK AYIKLA VE TARA</button></div><div id="oo"></div></section>
-<section id="c" class="panel"><div class="card"><div class="g2"><div><label>5 haneli kod</label><input id="code" inputmode="numeric"></div><div><label>Lig</label><input id="cl"></div></div><div class="g2" style="margin-top:8px"><div><label>Yön</label><select id="dir"><option value="exact">Tam kod</option><option value="start">İlk haneler</option><option value="end">Son haneler</option></select></div><div><label>Hane</label><select id="dig"><option>1</option><option>2</option><option>3</option><option>4</option><option selected>5</option></select></div></div><button class="go" onclick="scanCode()">KODU TARA</button></div><div id="co"></div></section>
-<section id="p" class="panel"><div class="card"><div class="grid" id="p6"></div><button class="go" onclick="scanP6()">+6 REFERANSINI KONTROL ET</button></div><div id="po"></div></section></div><script>
-const M={h:'MS 1',d:'MS X',a:'MS 2',u25:'2,5 Alt',o25:'2,5 Üst',btts:'KG Var',nobtts:'KG Yok',u35:'3,5 Alt',o35:'3,5 Üst',iyu15:'İY 1,5 Alt',iyo15:'İY 1,5 Üst',g6:'6+ Gol'}; odds.innerHTML=Object.entries(M).map(([k,n])=>`<div><label>${n}</label><input id="${k}" inputmode="decimal"></div>`).join(''); const P={o25:'2,5 Üst',o35:'3,5 Üst',o45:'4,5 Üst',btts:'KG Var',iy05:'İY 0,5 Üst',nofirst:'İlk Gol/Korner Olmaz'};p6.innerHTML=Object.entries(P).map(([k,n])=>`<div><label>${n}</label><input id="p_${k}" inputmode="decimal"></div>`).join('');
-function tab(id,b){document.querySelectorAll('.panel').forEach(x=>x.classList.remove('on'));document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));document.getElementById(id).classList.add('on');b.classList.add('on')} function num(id){let v=document.getElementById(id).value.trim().replace(',','.');return v===''?null:Number(v)} async function post(url,data){let r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});let j=await r.json();if(!r.ok)throw Error(j.detail||'Hata');return j} function stats(s){return Object.entries(s).filter(([k,v])=>!k.startsWith('sample')&&v!=null).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="row"><span>${k}</span><b>%${v}</b></div>`).join('')}
-function parseBulkOdds(){
-  const text=document.getElementById('bulkOdds').value.replace(/\r/g,'');
-  const lines=text.split('\n').map(x=>x.trim()).filter(Boolean);
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ATASU Analiz</title>
 
-  const marketMap={
-    'Maç Sonucu':{1:'ms1',X:'msx',2:'ms2'},
-    '1,5 Alt/Üst':{Alt:'u15',Üst:'o15'},
-    '2,5 Alt/Üst':{Alt:'u25',Üst:'o25'},
-    '3,5 Alt/Üst':{Alt:'u35',Üst:'o35'},
-    '4,5 Alt/Üst':{Alt:'u45',Üst:'o45'},
-    'Karşılıklı Gol':{Var:'btts_y',Yok:'btts_n'},
-    '1. Yarı Sonucu':{1:'ht1',X:'htx',2:'ht2'}
-  };
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;background:#05070b;color:#eee;
+ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif
+}
+.wrap{max-width:760px;margin:auto;padding:16px}
+h1{margin:5px 0;color:#d9b85c;font-size:25px}
+.sub{color:#999;font-size:12px;margin-bottom:14px}
+.card{
+ background:linear-gradient(145deg,#10141b,#090c11);
+ border:1px solid #282d36;border-radius:14px;
+ padding:14px;margin:10px 0
+}
+label{display:block;color:#aaa;font-size:12px;margin-bottom:6px}
+textarea,input,select{
+ width:100%;background:#05070a;color:#eee;
+ border:1px solid #363b44;border-radius:9px;
+ padding:11px;font-size:16px
+}
+textarea{min-height:250px;resize:vertical}
+button{
+ border:0;border-radius:9px;padding:12px;
+ font-weight:800;font-size:13px
+}
+.go{
+ width:100%;margin-top:10px;
+ background:linear-gradient(90deg,#c9a74d,#f1d77c);
+ color:#050505
+}
+.clear{
+ width:100%;margin-top:8px;
+ background:#272b32;color:#ddd;
+ border:1px solid #444
+}
+.tabs{
+ display:grid;grid-template-columns:repeat(3,1fr);
+ gap:5px;margin:12px 0
+}
+.tabs button{
+ background:#181b21;color:#999;
+ border:1px solid #30343c;padding:10px 4px
+}
+.tabs button.on{
+ color:#f0d276;border-color:#c5a448;background:#29230f
+}
+.panel{display:none}
+.panel.on{display:block}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.k{
+ display:grid;grid-template-columns:repeat(3,1fr);
+ gap:7px;margin-bottom:10px
+}
+.k div{
+ text-align:center;background:#080a0e;
+ border:1px solid #252932;border-radius:9px;padding:9px 4px
+}
+.k b{display:block;color:#d8b754;font-size:19px}
+.k small{font-size:10px;color:#888}
+.row{
+ display:flex;justify-content:space-between;
+ gap:10px;border-bottom:1px solid #242830;
+ padding:9px 2px;font-size:13px
+}
+.row:last-child{border-bottom:0}
+.row b{color:#d9b85c}
+small{color:#9298a2}
+.good{color:#7fe19a}
+.bad{color:#ff8b8b}
+.codebox{
+ display:inline-block;margin:3px;padding:5px 7px;
+ border:1px solid #3c414a;border-radius:7px;
+ color:#d9b85c;font-size:12px
+}
+.title{
+ color:#d9b85c;font-weight:800;margin-bottom:8px
+}
+</style>
+</head>
 
-  let odds={};
-  let codes=[];
-  let current=null;
+<body>
+<div class="wrap">
 
-  for(let i=0;i<lines.length;i++){
-    let line=lines[i];
+<h1>ATASU ANALİZ</h1>
+<div class="sub" id="meta">Geçmiş veri yükleniyor...</div>
 
-    let code=line.match(/\b(\d{5})\b/);
-    if(code){
-      codes.push(code[1]);
-      let title=line.replace(/\b\d{5}\b/g,'').trim();
-      current=null;
+<div class="card">
+ <label>ORAN / KOD BLOĞUNU BİR KEZ YAPIŞTIR</label>
 
-      for(const name of Object.keys(marketMap)){
-        if(title===name){
-          current=marketMap[name];
-          break;
-        }
-      }
-      continue;
-    }
+ <textarea id="bulk" placeholder="Maç Sonucu 09614
+1
+4.38
+X
+3.51
+2
+1.51
 
-    if(current && current[line] && i+1<lines.length){
-      let raw=lines[i+1].replace(',','.');
-      let value=parseFloat(raw);
+2,5 Alt/Üst 09636
+Alt
+1.79
+Üst
+1.62
 
-      if(Number.isFinite(value)){
-        odds[current[line]]=value;
-        i++;
-      }
-    }
-  }
+Karşılıklı Gol 09626
+Var
+1.62
+Yok
+1.79
 
-  return {odds,codes:[...new Set(codes)]};
+..."></textarea>
+
+ <div class="g2" style="margin-top:8px">
+  <div>
+   <label>Oran toleransı (±)</label>
+   <input id="tol" value="0.05" inputmode="decimal">
+  </div>
+  <div>
+   <label>Lig filtresi</label>
+   <input id="league" placeholder="İsteğe bağlı">
+  </div>
+ </div>
+
+ <button class="clear" onclick="clearAll()">TEMİZLE</button>
+</div>
+
+<div class="tabs">
+ <button class="on" onclick="tab('oddsPanel',this)">GEÇMİŞ ORAN</button>
+ <button onclick="tab('codePanel',this)">MAÇ KODU</button>
+ <button onclick="tab('plusPanel',this)">+6 GOL</button>
+</div>
+
+<section id="oddsPanel" class="panel on">
+ <div class="card">
+  <div class="title">Geçmiş Oran Analizi</div>
+  <small>Aynı üstteki yapıştırılmış veri kullanılır.</small>
+  <button class="go" onclick="scanOdds()">GEÇMİŞ ORANLARI TARA</button>
+ </div>
+ <div id="oddsOut"></div>
+</section>
+
+<section id="codePanel" class="panel">
+ <div class="card">
+  <div class="title">Toplu Maç Kodu Analizi</div>
+  <small>Yapıştırılan metindeki bütün gerçek 5 haneli kodlar otomatik taranır.</small>
+
+  <div class="g2" style="margin-top:10px">
+   <div>
+    <label>Eşleşme</label>
+    <select id="direction">
+     <option value="exact">Tam 5 hane</option>
+     <option value="start">İlk haneler</option>
+     <option value="end">Son haneler</option>
+    </select>
+   </div>
+
+   <div>
+    <label>Hane sayısı</label>
+    <select id="digits">
+     <option value="5">5</option>
+     <option value="4">4</option>
+     <option value="3">3</option>
+     <option value="2">2</option>
+     <option value="1">1</option>
+    </select>
+   </div>
+  </div>
+
+  <button class="go" onclick="scanCodes()">BÜTÜN KODLARI TARA</button>
+ </div>
+ <div id="codeOut"></div>
+</section>
+
+<section id="plusPanel" class="panel">
+ <div class="card">
+  <div class="title">+6 Gol Analizi</div>
+  <small>Gerekli oranlar üstteki aynı yapıştırılmış metinden otomatik alınır.</small>
+  <button class="go" onclick="scanPlus6()">+6 ANALİZ ET</button>
+ </div>
+ <div id="plusOut"></div>
+</section>
+
+</div>
+
+<script>
+
+const MARKET_NAMES={
+ h:'MS 1',
+ d:'MS X',
+ a:'MS 2',
+ u25:'2,5 Alt',
+ o25:'2,5 Üst',
+ btts:'KG Var',
+ nobtts:'KG Yok',
+ u35:'3,5 Alt',
+ o35:'3,5 Üst',
+ iyu15:'İY 1,5 Alt',
+ iyo15:'İY 1,5 Üst',
+ g6:'6+ Gol'
+};
+
+function tab(id,b){
+ document.querySelectorAll('.panel').forEach(x=>x.classList.remove('on'));
+ document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));
+ document.getElementById(id).classList.add('on');
+ b.classList.add('on');
 }
 
-async function scanBulkOdds(){
-  try{
-    const parsed=parseBulkOdds();
-
-    if(Object.keys(parsed.odds).length<2){
-      throw new Error('Yapıştırılan metinden yeterli desteklenen oran bulunamadı.');
-    }
-
-    let j=await post('/api/odds',{
-      odds:parsed.odds,
-      tolerance:num('tol'),
-      league:league.value,
-      limit:500
-    });
-
-    let searched=Object.entries(j.searched_odds||{})
-      .map(([k,v])=>`${M[k]||k}: ${Number(v).toFixed(2)}`)
-      .join(' · ');
-
-    oo.innerHTML=`
-      <div class="card">
-        <div class="k">
-          <div><b>${j.matched}</b><small>gerçek eşleşme</small></div>
-          <div><b>${j.pool_size}</b><small>taranan sonuçlu maç</small></div>
-          <div><b>${j.stats.sample_ft}</b><small>istatistik örneklemi</small></div>
-        </div>
-
-        <p>${j.method}</p>
-        <p><small>Okunan 5 haneli kod: ${parsed.codes.length}</small></p>
-        <p><small>Analizde kullanılan oran: ${Object.keys(parsed.odds).length}</small></p>
-        <p><small>${searched}</small></p>
-
-        ${stats(j.stats)}
-      </div>
-
-      <div class="card">
-        <b>İlk referanslar</b>
-        ${j.matches.slice(0,20).map(x=>{
-          let odds=Object.keys(j.searched_odds||{}).map(k=>
-            x[k]!=null
-              ?`${M[k]||k}: ${Number(x[k]).toFixed(2)} (Δ${Number((x._differences||{})[k]||0).toFixed(3)})`
-              :''
-          ).filter(Boolean).join(' · ');
-
-          return `<div class="row">
-            <span>
-              ${x.home} — ${x.away}<br>
-              <small>${x.league} · İY ${x.ht||'-'} · MS ${x.ft}</small><br>
-              <small>${odds}</small>
-            </span>
-          </div>`;
-        }).join('')}
-      </div>`;
-  }catch(e){
-    alert(e.message);
-  }
-}
-async function scanCode(){
-  try{
-    const code=document.getElementById('code').value.trim();
-    const league=document.getElementById('cleague').value.trim();
-    const direction=document.getElementById('direction').value;
-    const digits=Number(document.getElementById('digits').value);
-
-    if(!code){
-      throw new Error('5 haneli kod gir');
-    }
-
-    const j=await post('/api/code',{
-      code:code,
-      league:league,
-      direction:direction,
-      digits:digits
-    });
-
-    co.innerHTML=`
-      <div class="card">
-        <div class="k">
-          <div><b>${j.matched ?? 0}</b><small>eşleşen maç</small></div>
-          <div><b>${j.stored ?? 0}</b><small>kayıtlı kod</small></div>
-        </div>
-        ${j.stats ? stats(j.stats) : ''}
-      </div>
-
-      <div class="card">
-        <b>Tüm referanslar</b>
-        ${(j.matches || []).map(x=>`
-          <div class="row">
-            <span>
-              ${x.home || '-'} — ${x.away || '-'}<br>
-              <small>${x.league || '-'} · İY ${x.ht || '-'} · MS ${x.ft || '-'}</small>
-            </span>
-          </div>
-        `).join('')}
-      </div>`;
-  }catch(e){
-    alert(e.message);
-  }
+function numberValue(id){
+ const v=document.getElementById(id).value.trim().replace(',','.');
+ return v===''?null:Number(v);
 }
 
-async function scanP6(){
-  try{
-    const q={};
+async function post(url,data){
+ const r=await fetch(url,{
+  method:'POST',
+  headers:{'content-type':'application/json'},
+  body:JSON.stringify(data)
+ });
 
-    document.querySelectorAll('#p input').forEach(el=>{
-      if(el.id && el.id.startsWith('p_')){
-        const v=el.value.trim().replace(',','.');
-        if(v!=='' && Number.isFinite(Number(v))){
-          q[el.id.substring(2)]=Number(v);
-        }
-      }
-    });
+ let j;
 
-    const j=await post('/api/plus6',q);
+ try{
+  j=await r.json();
+ }catch{
+  throw new Error('Sunucudan geçersiz cevap geldi.');
+ }
 
-    po.innerHTML=`
-      <div class="card">
-        ${j.stats ? stats(j.stats) : ''}
-      </div>
+ if(!r.ok){
+  throw new Error(j.detail || 'İşlem başarısız.');
+ }
 
-      <div class="card">
-        <b>Tüm referanslar</b>
-        ${(j.matches || []).map(x=>`
-          <div class="row">
-            <span>
-              ${x.home || '-'} — ${x.away || '-'}<br>
-              <small>${x.league || '-'} · İY ${x.ht || '-'} · MS ${x.ft || '-'}</small>
-            </span>
-          </div>
-        `).join('')}
-      </div>`;
-  }catch(e){
-    alert(e.message);
-  }
+ return j;
 }
-</script></body></html>
+
+function statsHTML(s){
+ if(!s)return '';
+
+ return Object.entries(s)
+  .filter(([k,v])=>!k.startsWith('sample') && v!==null)
+  .sort((a,b)=>b[1]-a[1])
+  .map(([k,v])=>`
+   <div class="row">
+    <span>${k}</span>
+    <b>%${v}</b>
+   </div>
+  `).join('');
+}
+
+function cleanTitle(s){
+ return s
+  .replace(/\b\d{5}\b/g,'')
+  .replace(/\s+/g,' ')
+  .trim();
+}
+
+function parseBulk(){
+
+ const text=document.getElementById('bulk').value.replace(/\r/g,'');
+
+ if(!text.trim()){
+  throw new Error('Önce oran/kod bloğunu yapıştır.');
+ }
+
+ const lines=text
+  .split('\n')
+  .map(x=>x.trim())
+  .filter(Boolean);
+
+ const codes=[];
+ const odds={};
+
+ const plus6={
+  o25:null,
+  o35:null,
+  o45:null,
+  btts:null,
+  iy05:null,
+  nofirst:null
+ };
+
+ let current='';
+
+ for(let i=0;i<lines.length;i++){
+
+  const line=lines[i];
+
+  const cm=line.match(/\b(\d{5})\b/);
+
+  if(cm){
+   codes.push(cm[1]);
+   current=cleanTitle(line);
+   continue;
+  }
+
+  if(i+1>=lines.length)continue;
+
+  const next=lines[i+1].replace(',','.');
+
+  if(next==='-')continue;
+
+  const value=Number(next);
+
+  if(!Number.isFinite(value))continue;
+
+  /* MAÇ SONUCU */
+  if(current==='Maç Sonucu'){
+   if(line==='1')odds.h=value;
+   if(line==='X')odds.d=value;
+   if(line==='2')odds.a=value;
+  }
+
+  /* 2,5 ALT / ÜST */
+  if(
+   current==='2,5 Alt/Üst' ||
+   current==='(2,5) Alt/Üst'
+  ){
+   if(line==='Alt')odds.u25=value;
+   if(line==='Üst'){
+    odds.o25=value;
+    plus6.o25=value;
+   }
+  }
+
+  /* 3,5 ALT / ÜST */
+  if(
+   current==='3,5 Alt/Üst' ||
+   current==='(3,5) Alt/Üst'
+  ){
+   if(line==='Alt')odds.u35=value;
+   if(line==='Üst'){
+    odds.o35=value;
+    plus6.o35=value;
+   }
+  }
+
+  /* 4,5 ALT / ÜST */
+  if(
+   current==='4,5 Alt/Üst' ||
+   current==='(4,5) Alt/Üst'
+  ){
+   if(line==='Üst')plus6.o45=value;
+  }
+
+  /* KG */
+  if(current==='Karşılıklı Gol'){
+   if(line==='Var'){
+    odds.btts=value;
+    plus6.btts=value;
+   }
+   if(line==='Yok')odds.nobtts=value;
+  }
+
+  /* İLK YARI 1,5 */
+  if(
+   current==='1. Yarı 1,5 Alt/Üst' ||
+   current==='1.Yarı 1,5 Alt/Üst'
+  ){
+   if(line==='Alt')odds.iyu15=value;
+   if(line==='Üst')odds.iyo15=value;
+  }
+
+  /* +6 İÇİN İY 0,5 ÜST */
+  if(
+   current==='1. Yarı 0,5 Alt/Üst' ||
+   current==='1.Yarı 0,5 Alt/Üst'
+  ){
+   if(line==='Üst')plus6.iy05=value;
+  }
+
+  /* İLK GOL OLMAZ */
+  if(current==='İlk Gol'){
+   if(line==='Olmaz')plus6.nofirst=value;
+  }
+
+  /* 6+ GOL */
+  if(current==='Toplam Gol Aralığı'){
+   if(line==='6+ Gol')odds.g6=value;
+  }
+ }
+
+ return {
+  codes:[...new Set(codes)],
+  odds,
+  plus6
+ };
+}
+
+
+/* =======================================================
+   GEÇMİŞ ORAN
+======================================================= */
+
+async function scanOdds(){
+
+ try{
+
+  const parsed=parseBulk();
+
+  if(Object.keys(parsed.odds).length<2){
+   throw new Error(
+    'Yapıştırılan metinden geçmiş veriyle karşılaştırılabilecek en az 2 oran bulunamadı.'
+   );
+  }
+
+  const j=await post('/api/odds',{
+   odds:parsed.odds,
+   tolerance:numberValue('tol') ?? 0.05,
+   league:document.getElementById('league').value,
+   limit:10000
+  });
+
+  const readOdds=Object.entries(j.searched_odds || {})
+   .map(([k,v])=>`
+    <span class="codebox">
+     ${MARKET_NAMES[k] || k}: ${Number(v).toFixed(2)}
+    </span>
+   `).join('');
+
+  const refs=(j.matches || []).map((x,index)=>{
+
+   const compared=Object.keys(j.searched_odds || {})
+    .map(k=>{
+     if(x[k]===null || x[k]===undefined)return '';
+
+     const diff=(x._differences || {})[k];
+
+     return `${MARKET_NAMES[k] || k} ${Number(x[k]).toFixed(2)}${
+      diff!==undefined ? ` Δ${Number(diff).toFixed(3)}` : ''
+     }`;
+    })
+    .filter(Boolean)
+    .join(' · ');
+
+   return `
+    <div class="row">
+     <span>
+      <b>${index+1}. ${x.home || '-'} — ${x.away || '-'}</b><br>
+      <small>
+       ${x.league || '-'} ·
+       İY ${x.ht || '-'} ·
+       MS ${x.ft || '-'}
+      </small><br>
+      <small>${compared}</small>
+     </span>
+    </div>
+   `;
+  }).join('');
+
+  oddsOut.innerHTML=`
+   <div class="card">
+
+    <div class="k">
+     <div>
+      <b>${j.matched ?? 0}</b>
+      <small>gerçek eşleşme</small>
+     </div>
+
+     <div>
+      <b>${j.pool_size ?? 0}</b>
+      <small>taranan maç</small>
+     </div>
+
+     <div>
+      <b>${j.stats?.sample_ft ?? 0}</b>
+      <small>istatistik örneklemi</small>
+     </div>
+    </div>
+
+    <div class="title">Okunan oranlar</div>
+    ${readOdds}
+
+    <p><small>${j.method || ''}</small></p>
+
+    ${statsHTML(j.stats)}
+
+   </div>
+
+   <div class="card">
+    <div class="title">
+     Tüm Geçmiş Referanslar (${j.matched ?? 0})
+    </div>
+
+    ${refs || '<small>Eşleşen geçmiş maç yok.</small>'}
+   </div>
+  `;
+
+ }catch(e){
+  alert(e.message);
+ }
+}
+
+
+/* =======================================================
+   TOPLU MAÇ KODU
+======================================================= */
+
+async function scanCodes(){
+
+ try{
+
+  const parsed=parseBulk();
+
+  if(!parsed.codes.length){
+   throw new Error(
+    'Yapıştırılan metinde 5 haneli kod bulunamadı.'
+   );
+  }
+
+  const j=await post('/api/codes/scan',{
+   codes:parsed.codes,
+   direction:document.getElementById('direction').value,
+   digits:Number(document.getElementById('digits').value),
+   league:document.getElementById('league').value
+  });
+
+  const codeList=(j.searched_codes || [])
+   .map(x=>`<span class="codebox">${x}</span>`)
+   .join('');
+
+  const perCode=(j.results || []).map(r=>`
+
+   <div class="card">
+
+    <div class="row">
+     <span>Kod</span>
+     <b>${r.code}</b>
+    </div>
+
+    <div class="row">
+     <span>Geçmiş eşleşme</span>
+     <b>${r.matched}</b>
+    </div>
+
+    ${statsHTML(r.stats)}
+
+    ${(r.matches || []).map(x=>`
+     <div class="row">
+      <span>
+       ${x.home || '-'} — ${x.away || '-'}<br>
+       <small>
+        ${x.league || '-'} ·
+        İY ${x.ht || '-'} ·
+        MS ${x.ft || '-'}
+       </small>
+      </span>
+     </div>
+    `).join('')}
+
+   </div>
+
+  `).join('');
+
+  codeOut.innerHTML=`
+
+   <div class="card">
+
+    <div class="k">
+
+     <div>
+      <b>${j.searched_count ?? 0}</b>
+      <small>okunan kod</small>
+     </div>
+
+     <div>
+      <b>${j.stored ?? 0}</b>
+      <small>kayıtlı kod</small>
+     </div>
+
+     <div>
+      <b>${j.matched_total ?? 0}</b>
+      <small>geçmiş eşleşme</small>
+     </div>
+
+    </div>
+
+    <div class="title">Otomatik Okunan Kodlar</div>
+
+    ${codeList}
+
+    <div class="title" style="margin-top:12px">
+     Tüm Kodların Ortak İstatistiği
+    </div>
+
+    ${statsHTML(j.stats)}
+
+   </div>
+
+   ${perCode}
+  `;
+
+ }catch(e){
+  alert(e.message);
+ }
+}
+
+
+/* =======================================================
+   +6 GOL
+======================================================= */
+
+async function scanPlus6(){
+
+ try{
+
+  const parsed=parseBulk();
+
+  const j=await post(
+   '/api/plus6',
+   parsed.plus6
+  );
+
+  const rules=(j.rules || []).map(r=>{
+
+   let val='-';
+
+   if(r.value!==undefined && r.value!==null){
+    val=r.value;
+   }
+
+   if(r.values){
+    val=r.values
+     .filter(x=>x!==null && x!==undefined)
+     .join(' / ') || '-';
+   }
+
+   return `
+    <div class="row">
+     <span>
+      ${r.name}<br>
+      <small>Okunan değer: ${val}</small>
+     </span>
+
+     <b class="${r.match?'good':'bad'}">
+      ${r.match?'UYDU':'UYMUYOR'}
+     </b>
+    </div>
+   `;
+  }).join('');
+
+  plusOut.innerHTML=`
+
+   <div class="card">
+
+    <div class="k">
+
+     <div>
+      <b>${j.matched_rules ?? 0}/5</b>
+      <small>uyumlu kural</small>
+     </div>
+
+     <div>
+      <b>%${j.compatibility_percent ?? 0}</b>
+      <small>referans uyumu</small>
+     </div>
+
+     <div>
+      <b>${j.total_rules ?? 5}</b>
+      <small>toplam kural</small>
+     </div>
+
+    </div>
+
+    ${rules}
+
+    <p>
+     <small>${j.note || ''}</small>
+    </p>
+
+   </div>
+  `;
+
+ }catch(e){
+  alert(e.message);
+ }
+}
+
+
+/* =======================================================
+   TEMİZLE
+======================================================= */
+
+function clearAll(){
+
+ document.getElementById('bulk').value='';
+ document.getElementById('league').value='';
+ document.getElementById('tol').value='0.05';
+
+ document.getElementById('oddsOut').innerHTML='';
+ document.getElementById('codeOut').innerHTML='';
+ document.getElementById('plusOut').innerHTML='';
+
+ document.getElementById('bulk').focus();
+
+ window.scrollTo({
+  top:0,
+  behavior:'smooth'
+ });
+}
+
+
+/* =======================================================
+   META
+======================================================= */
+
+(async()=>{
+
+ try{
+
+  const r=await fetch('/api/meta');
+  const j=await r.json();
+
+  document.getElementById('meta').textContent=
+   `${j.history_rows.toLocaleString('tr-TR')} geçmiş maç yüklü · `+
+   `${j.completed_rows.toLocaleString('tr-TR')} sonuçlu maç`;
+
+ }catch{
+
+  document.getElementById('meta').textContent=
+   'Geçmiş veri bilgisi alınamadı';
+
+ }
+
+})();
+
+</script>
+</body>
+</html>
