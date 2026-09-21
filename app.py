@@ -43,7 +43,7 @@ class OddsReq(BaseModel):
     limit: int=Field(200,ge=1,le=2000)
 
 @app.get('/')
-def root(): return FileResponse(ROOT/'static/index.html')
+def root(): return FileResponse(ROOT/index.html')
 
 @app.get('/api/meta')
 def meta():
