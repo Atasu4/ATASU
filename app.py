@@ -4,654 +4,207 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pathlib import Path
 from collections import Counter
-import json
-import re
-import math
+import json, re, math
 
-ROOT = Path(__file__).parent
-DATA_DIR = ROOT / "data"
-HISTORY_FILE = DATA_DIR / "history.json"
+ROOT=Path(__file__).parent; HISTORY_FILE=ROOT/'data'/'history.json'
+if not HISTORY_FILE.exists(): raise RuntimeError('data/history.json bulunamadı.')
+HISTORY=json.loads(HISTORY_FILE.read_text(encoding='utf-8'))
+MARKETS=['h','d','a','u25','o25','btts','nobtts','u35','o35','iyu15','iyo15','g6']
+NAMES={'h':'MS 1','d':'MS X','a':'MS 2','u25':'2,5 Alt','o25':'2,5 Üst','btts':'KG Var','nobtts':'KG Yok','u35':'3,5 Alt','o35':'3,5 Üst','iyu15':'İY 1,5 Alt','iyo15':'İY 1,5 Üst','g6':'6+ Gol'}
+GROUPS=[('1X2',['h','d','a']),('2,5 Alt/Üst',['u25','o25']),('3,5 Alt/Üst',['u35','o35']),('Karşılıklı Gol',['btts','nobtts']),('İY 1,5 Alt/Üst',['iyu15','iyo15'])]
+app=FastAPI(title='ATASU Intelligence',version='4.2.2')
+if (ROOT/'static').exists(): app.mount('/static',StaticFiles(directory=ROOT/'static'),name='static')
 
-if not HISTORY_FILE.exists():
-    raise RuntimeError("data/history.json bulunamadı.")
-
-HISTORY = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
-
-MARKETS = [
-    "h", "d", "a",
-    "u25", "o25",
-    "btts", "nobtts",
-    "u35", "o35",
-    "iyu15", "iyo15",
-    "odd", "even",
-    "g6"
-]
-
-app = FastAPI(title="ATASU Intelligence", version="4.0.1")
-
-static_dir = ROOT / "static"
-if static_dir.exists():
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
-
-# =========================================================
-# HELPERS
-# =========================================================
-
-def score(value):
-    m = re.fullmatch(r"\s*(\d+)\s*-\s*(\d+)\s*", str(value or ""))
-    if not m:
-        return None
-    return int(m.group(1)), int(m.group(2))
-
+def score(v):
+ m=re.fullmatch(r'\s*(\d+)\s*-\s*(\d+)\s*',str(v or '')); return (int(m.group(1)),int(m.group(2))) if m else None
 
 def stats(rows):
-    z = {
-        "home": 0, "draw": 0, "away": 0,
-        "o15": 0, "u15": 0,
-        "o25": 0, "u25": 0,
-        "btts": 0, "nobtts": 0,
-        "o35": 0, "u35": 0,
-        "htHome": 0, "htDraw": 0, "htAway": 0,
-        "fh": 0, "sh": 0, "eq": 0
-    }
+ z=Counter(); scores=Counter(); n=nh=tg=hg_sum=ag_sum=0
+ for r in rows:
+  ft=score(r.get('ft'))
+  if not ft: continue
+  n+=1; h,a=ft; t=h+a; tg+=t; hg_sum+=h; ag_sum+=a; scores[f'{h}-{a}']+=1
+  z['home' if h>a else 'draw' if h==a else 'away']+=1
+  z['o15' if t>=2 else 'u15']+=1; z['o25' if t>=3 else 'u25']+=1; z['o35' if t>=4 else 'u35']+=1
+  z['btts' if h>0 and a>0 else 'nobtts']+=1
+  ht=score(r.get('ht'))
+  if ht:
+   nh+=1; hh,ha=ht; z['htHome' if hh>ha else 'htDraw' if hh==ha else 'htAway']+=1
+   fh=hh+ha; sh=t-fh; z['fh' if fh>sh else 'sh' if sh>fh else 'eq']+=1
+ def p(k,d): return round(100*z[k]/d,1) if d else None
+ return {'sample_ft':n,'sample_ht':nh,'avg_goals':round(tg/n,2) if n else None,'avg_home_goals':round(hg_sum/n,2) if n else None,'avg_away_goals':round(ag_sum/n,2) if n else None,
+ 'top_scores':[{'score':s,'count':c,'percent':round(c/n*100,1)} for s,c in scores.most_common(6)] if n else [],
+ 'MS 1':p('home',n),'MS X':p('draw',n),'MS 2':p('away',n),'1,5 Üst':p('o15',n),'1,5 Alt':p('u15',n),'2,5 Üst':p('o25',n),'2,5 Alt':p('u25',n),'KG Var':p('btts',n),'KG Yok':p('nobtts',n),'3,5 Üst':p('o35',n),'3,5 Alt':p('u35',n),'İY 1':p('htHome',nh),'İY X':p('htDraw',nh),'İY 2':p('htAway',nh),'Daha çok gol 1.Y':p('fh',nh),'Daha çok gol 2.Y':p('sh',nh),'Yarılar eşit':p('eq',nh)}
 
-    n = 0
-    nh = 0
-    scores = Counter()
-    total_goals = 0
-    home_goals_sum = 0
-    away_goals_sum = 0
+def probability_engine(q):
+ groups=[]
+ for title,keys in GROUPS:
+  if not all(k in q for k in keys): continue
+  inv=[1/q[k] for k in keys]; book=sum(inv)
+  # A complete bookmaker market should not have a negative overround. If it does,
+  # the pasted values are likely stale/mixed/misparsed. Do not manufacture a fair distribution.
+  if book < 1:
+   groups.append({'market':title,'book_percent':round(book*100,2),'margin_percent':round((book-1)*100,2),'valid':False,'warning':'Tutarsız tam market: toplam implied probability %100 altında. Marjsız olasılık üretilmedi.','selections':[{'key':k,'name':NAMES[k],'odds':q[k],'raw_percent':round(100/q[k],2),'fair_percent':None} for k in keys]})
+   continue
+  fair=[x/book for x in inv]
+  groups.append({'market':title,'book_percent':round(book*100,2),'margin_percent':round((book-1)*100,2),'valid':True,'warning':None,'selections':[{'key':k,'name':NAMES[k],'odds':q[k],'raw_percent':round(100/q[k],2),'fair_percent':round(100*f,2)} for k,f in zip(keys,fair)]})
+ return groups
 
-    for r in rows:
-        ft = score(r.get("ft"))
-        if not ft:
-            continue
+def match_rows(q,tol,league=''):
+ pool=[r for r in HISTORY if score(r.get('ft')) is not None]
+ if league.strip(): pool=[r for r in pool if league.strip().casefold() in str(r.get('league','')).casefold()]
+ out=[]
+ for r in pool:
+  diffs={}; compared=matched=0
+  for k,target in q.items():
+   v=r.get(k)
+   if v is None: continue
+   try: v=float(v)
+   except: continue
+   compared+=1; d=abs(v-target); diffs[k]=round(d,3); matched+= d<=tol
+  if compared<2: continue
+  x=dict(r); x['_matched_odds']=matched; x['_compared_odds']=compared; x['_match_ratio']=round(100*matched/compared,1); x['_differences']=diffs; x['_total_difference']=round(sum(diffs.values()),3); out.append(x)
+ searched=len(q); minimum=max(2,(searched+1)//2)
+ matches=[x for x in out if x['_matched_odds']>=minimum]
+ # Strict mode: if the requested tolerance has no qualifying historical match,
+ # return zero. Never promote out-of-tolerance rows into the result set.
+ matches.sort(key=lambda x:(-x['_matched_odds'],-x['_match_ratio'],x['_total_difference']))
+ return pool,matches,minimum,False
 
-        n += 1
-        hg, ag = ft
-        total = hg + ag
-        scores[f"{hg}-{ag}"] += 1
-        total_goals += total
-        home_goals_sum += hg
-        away_goals_sum += ag
+def key_result(k,ft,ht):
+ h,a=ft; t=h+a
+ return {'h':h>a,'d':h==a,'a':h<a,'o25':t>=3,'u25':t<=2,'o35':t>=4,'u35':t<=3,'btts':h>0 and a>0,'nobtts':h==0 or a==0,'g6':t>=6}.get(k)
 
-        if hg > ag:
-            z["home"] += 1
-        elif hg == ag:
-            z["draw"] += 1
-        else:
-            z["away"] += 1
+def relationship_engine(rows):
+ # Derived only from real FT results in the matched historical sample.
+ valid=[]
+ for r in rows:
+  ft=score(r.get('ft'))
+  if ft: valid.append(ft)
+ n=len(valid)
+ if not n: return []
+ tests=[
+  ('2,5 Üst + KG Var', lambda h,a: h+a>=3 and h>0 and a>0),
+  ('2,5 Alt + KG Yok', lambda h,a: h+a<=2 and (h==0 or a==0)),
+  ('3,5 Üst + KG Var', lambda h,a: h+a>=4 and h>0 and a>0),
+  ('MS 1 + 1,5 Üst', lambda h,a: h>a and h+a>=2),
+  ('MS 2 + 1,5 Üst', lambda h,a: h<a and h+a>=2),
+  ('Beraberlik + KG Var', lambda h,a: h==a and h>0 and a>0),
+ ]
+ out=[]
+ for name,fn in tests:
+  c=sum(1 for h,a in valid if fn(h,a))
+  out.append({'name':name,'count':c,'sample':n,'percent':round(100*c/n,1)})
+ return sorted(out,key=lambda x:x['percent'],reverse=True)
 
-        z["o15" if total >= 2 else "u15"] += 1
-        z["o25" if total >= 3 else "u25"] += 1
-        z["o35" if total >= 4 else "u35"] += 1
-        z["btts" if hg > 0 and ag > 0 else "nobtts"] += 1
+def market_comparison(stats_obj, prob_groups):
+ # Compare historical outcome frequency with de-margined market probability only when both exist.
+ hist_map={'h':'MS 1','d':'MS X','a':'MS 2','u25':'2,5 Alt','o25':'2,5 Üst','u35':'3,5 Alt','o35':'3,5 Üst','btts':'KG Var','nobtts':'KG Yok'}
+ out=[]
+ for g in prob_groups:
+  for sel in g.get('selections',[]):
+   hk=hist_map.get(sel.get('key'))
+   hv=stats_obj.get(hk) if hk else None
+   fv=sel.get('fair_percent')
+   if not isinstance(hv,(int,float)) or not isinstance(fv,(int,float)): continue
+   out.append({'market':g.get('market'),'selection':sel.get('name'),'historical_percent':round(hv,1),'fair_percent':round(fv,2),'difference_points':round(hv-fv,2)})
+ return sorted(out,key=lambda x:abs(x['difference_points']),reverse=True)
 
-        ht = score(r.get("ht"))
-        if ht:
-            nh += 1
-            hh, ha = ht
-            if hh > ha:
-                z["htHome"] += 1
-            elif hh == ha:
-                z["htDraw"] += 1
-            else:
-                z["htAway"] += 1
-
-            first_half = hh + ha
-            second_half = total - first_half
-            if first_half > second_half:
-                z["fh"] += 1
-            elif second_half > first_half:
-                z["sh"] += 1
-            else:
-                z["eq"] += 1
-
-    def pct(key, denominator):
-        if not denominator:
-            return None
-        return round(100 * z[key] / denominator, 1)
-
-    top_scores = [
-        {"score": s, "count": c, "percent": round(c / n * 100, 1)}
-        for s, c in scores.most_common(5)
-    ] if n else []
-
-    return {
-        "sample_ft": n,
-        "sample_ht": nh,
-        "avg_goals": round(total_goals / n, 2) if n else None,
-        "avg_home_goals": round(home_goals_sum / n, 2) if n else None,
-        "avg_away_goals": round(away_goals_sum / n, 2) if n else None,
-        "top_scores": top_scores,
-
-        "MS 1": pct("home", n),
-        "MS X": pct("draw", n),
-        "MS 2": pct("away", n),
-        "1,5 Üst": pct("o15", n),
-        "1,5 Alt": pct("u15", n),
-        "2,5 Üst": pct("o25", n),
-        "2,5 Alt": pct("u25", n),
-        "KG Var": pct("btts", n),
-        "KG Yok": pct("nobtts", n),
-        "3,5 Üst": pct("o35", n),
-        "3,5 Alt": pct("u35", n),
-        "İY 1": pct("htHome", nh),
-        "İY X": pct("htDraw", nh),
-        "İY 2": pct("htAway", nh),
-        "Daha çok gol 1.Y": pct("fh", nh),
-        "Daha çok gol 2.Y": pct("sh", nh),
-        "Yarılar eşit": pct("eq", nh)
-    }
-
-
-def normalize_pair(a, b):
-    if a is None or b is None:
-        return None
-    try:
-        a, b = float(a), float(b)
-        if a <= 1 or b <= 1:
-            return None
-        ia, ib = 1 / a, 1 / b
-        total = ia + ib
-        return ia / total, ib / total
-    except (TypeError, ValueError, ZeroDivisionError):
-        return None
-
-
-def normalize_three(a, b, c):
-    if any(v is None for v in (a, b, c)):
-        return None
-    try:
-        vals = [float(a), float(b), float(c)]
-        if any(v <= 1 for v in vals):
-            return None
-        inv = [1 / v for v in vals]
-        total = sum(inv)
-        return tuple(v / total for v in inv)
-    except (TypeError, ValueError, ZeroDivisionError):
-        return None
-
-
-def poisson_pmf(k, lam):
-    return math.exp(-lam) * (lam ** k) / math.factorial(k)
-
-
-def poisson_over_prob(lam, line):
-    threshold = int(math.floor(line)) + 1
-    under_or_equal = sum(poisson_pmf(k, lam) for k in range(threshold))
-    return max(0.0, min(1.0, 1.0 - under_or_equal))
-
-
-def solve_lambda(target_over, line):
-    lo, hi = 0.05, 8.0
-    for _ in range(70):
-        mid = (lo + hi) / 2
-        if poisson_over_prob(mid, line) < target_over:
-            lo = mid
-        else:
-            hi = mid
-    return (lo + hi) / 2
-
-
-def build_model(odds):
-    signals = []
-    lambdas = []
-
-    p25 = normalize_pair(odds.get("o25"), odds.get("u25"))
-    if p25:
-        po, pu = p25
-        lambdas.append((solve_lambda(po, 2.5), 3.0))
-        signals.append({"market": "2,5 Üst", "fair_percent": round(po * 100, 1)})
-
-    p35 = normalize_pair(odds.get("o35"), odds.get("u35"))
-    if p35:
-        po, pu = p35
-        lambdas.append((solve_lambda(po, 3.5), 2.0))
-        signals.append({"market": "3,5 Üst", "fair_percent": round(po * 100, 1)})
-
-    one_x_two = normalize_three(odds.get("h"), odds.get("d"), odds.get("a"))
-
-    if not lambdas:
-        return {
-            "available": False,
-            "reason": "Gol beklentisi modeli için aynı baremde Alt ve Üst oranlarının ikisi de gerekli. Tahmini varsayılan değer kullanılmadı.",
-            "signals": signals,
-            "probabilities": {},
-            "top_scores": []
-        }
-
-    lam_total = sum(l * w for l, w in lambdas) / sum(w for _, w in lambdas)
-
-    # Toplam gol beklentisini ev/deplasman yönüne ayırmak için 1X2'nin üç oranı gerekir.
-    # Eksikse taraf dağılımı üretmeyiz; veri uydurmayız.
-    if not one_x_two:
-        return {
-            "available": True,
-            "partial": True,
-            "expected_goals": round(lam_total, 2),
-            "home_xg_proxy": None,
-            "away_xg_proxy": None,
-            "probabilities": {},
-            "top_scores": [],
-            "signals": signals,
-            "note": "Toplam gol beklentisi Alt/Üst piyasasından türetildi. 1X2 tam olmadığı için ev/deplasman dağılımı ve skor modeli üretilmedi."
-        }
-
-    ph, pd, pa = one_x_two
-
-    # Sabit toplam lambda altında ev/deplasman payını, marjı temizlenmiş 1X2
-    # dağılımına en düşük kare hata ile uyduruyoruz. Keyfi katsayı kullanılmaz.
-    best = None
-    for i in range(501):
-        share = 0.08 + i * (0.84 / 500)
-        lh = max(0.01, lam_total * share)
-        la = max(0.01, lam_total - lh)
-        hp = dp = ap = 0.0
-        for hg in range(11):
-            p_h = poisson_pmf(hg, lh)
-            for ag in range(11):
-                p = p_h * poisson_pmf(ag, la)
-                if hg > ag: hp += p
-                elif hg == ag: dp += p
-                else: ap += p
-        mass = hp + dp + ap
-        hp, dp, ap = hp/mass, dp/mass, ap/mass
-        err = (hp-ph)**2 + (dp-pd)**2 + (ap-pa)**2
-        if best is None or err < best[0]:
-            best = (err, share)
-
-    share_home = best[1]
-    lam_home = max(0.05, lam_total * share_home)
-    lam_away = max(0.05, lam_total - lam_home)
-
-    grid = {}
-    total_mass = 0.0
-    for hg in range(11):
-        for ag in range(11):
-            p = poisson_pmf(hg, lam_home) * poisson_pmf(ag, lam_away)
-            grid[(hg, ag)] = p
-            total_mass += p
-
-    if total_mass:
-        grid = {k: v / total_mass for k, v in grid.items()}
-
-    def gp(fn):
-        return sum(p for (hg, ag), p in grid.items() if fn(hg, ag))
-
-    model_probs = {
-        "MS 1": gp(lambda h, a: h > a),
-        "MS X": gp(lambda h, a: h == a),
-        "MS 2": gp(lambda h, a: h < a),
-        "1,5 Üst": gp(lambda h, a: h + a >= 2),
-        "1,5 Alt": gp(lambda h, a: h + a <= 1),
-        "2,5 Üst": gp(lambda h, a: h + a >= 3),
-        "2,5 Alt": gp(lambda h, a: h + a <= 2),
-        "KG Var": gp(lambda h, a: h > 0 and a > 0),
-        "KG Yok": gp(lambda h, a: h == 0 or a == 0),
-        "3,5 Üst": gp(lambda h, a: h + a >= 4),
-        "3,5 Alt": gp(lambda h, a: h + a <= 3),
-    }
-
-    top_scores = sorted(grid.items(), key=lambda x: x[1], reverse=True)[:5]
-
-    return {
-        "available": True,
-        "partial": False,
-        "expected_goals": round(lam_total, 2),
-        "home_xg_proxy": round(lam_home, 2),
-        "away_xg_proxy": round(lam_away, 2),
-        "probabilities": {k: round(v * 100, 1) for k, v in model_probs.items()},
-        "top_scores": [
-            {"score": f"{h}-{a}", "percent": round(p * 100, 1)}
-            for (h, a), p in top_scores
-        ],
-        "note": "Model, girilen piyasa oranlarının marjı temizlenerek Poisson gol dağılımına kalibre edilir. xG değerleri gerçek takım xG verisi değil, piyasa-türevi gol beklentisidir."
-    }
-
-
-def build_consensus(history_stats, model):
-    hist = history_stats or {}
-    mp = model.get("probabilities", {}) if model else {}
-    keys = [
-        "MS 1", "MS X", "MS 2",
-        "1,5 Üst", "1,5 Alt",
-        "2,5 Üst", "2,5 Alt",
-        "KG Var", "KG Yok",
-        "3,5 Üst", "3,5 Alt"
-    ]
-    out = []
-
-    for key in keys:
-        hv = hist.get(key)
-        mv = mp.get(key)
-        if hv is None or mv is None:
-            continue
-
-        gap = abs(hv - mv)
-        avg = (hv + mv) / 2
-
-        if gap <= 7:
-            agreement = "YÜKSEK"
-        elif gap <= 14:
-            agreement = "ORTA"
-        else:
-            agreement = "DÜŞÜK"
-
-        out.append({
-            "market": key,
-            "history": hv,
-            "model": mv,
-            "average": round(avg, 1),
-            "gap": round(gap, 1),
-            "agreement": agreement
-        })
-
-    out.sort(key=lambda x: (
-        {"YÜKSEK": 0, "ORTA": 1, "DÜŞÜK": 2}[x["agreement"]],
-        -x["average"],
-        x["gap"]
-    ))
-    return out
-
-
-
-
-def market_probability_engine(odds):
-    groups = [
-        ("1X2", [("h", "MS 1"), ("d", "MS X"), ("a", "MS 2")]),
-        ("2,5 Gol", [("u25", "2,5 Alt"), ("o25", "2,5 Üst")]),
-        ("3,5 Gol", [("u35", "3,5 Alt"), ("o35", "3,5 Üst")]),
-        ("KG", [("btts", "KG Var"), ("nobtts", "KG Yok")]),
-        ("İY 1,5", [("iyu15", "İY 1,5 Alt"), ("iyo15", "İY 1,5 Üst")]),
-        ("Tek/Çift", [("odd", "Tek"), ("even", "Çift")]),
-    ]
-    out=[]
-    for name, members in groups:
-        vals=[]
-        complete=True
-        for key,label in members:
-            v=odds.get(key)
-            if v is None:
-                complete=False; break
-            try: v=float(v)
-            except: complete=False; break
-            if v <= 1: complete=False; break
-            vals.append((key,label,v,1/v))
-        if not complete: continue
-        raw=sum(x[3] for x in vals)
-        out.append({
-            "group": name,
-            "overround_percent": round((raw-1)*100,2),
-            "book_percent": round(raw*100,2),
-            "selections":[{
-                "key":k,"label":label,"odds":v,
-                "raw_implied":round(inv*100,2),
-                "fair_percent":round(inv/raw*100,2),
-                "fair_odds":round(raw/inv,3)
-            } for k,label,v,inv in vals]
-        })
-    return out
-
-
-def count_matches(pool, q, tolerance):
-    searched=len(q)
-    minimum=max(2,(searched+1)//2)
-    counts=Counter()
-    qualified=0
-    for row in pool:
-        matched=0; compared=0
-        for key,target in q.items():
-            v=row.get(key)
-            if v is None: continue
-            try: v=float(v)
-            except: continue
-            compared += 1
-            if abs(v-target) <= tolerance: matched += 1
-        if compared >= 2:
-            counts[matched] += 1
-            if matched >= minimum: qualified += 1
-    return qualified, dict(sorted(counts.items()))
-
-
-def contradiction_flags(prob_engine):
-    fair={s["key"]:s["fair_percent"] for g in prob_engine for s in g["selections"]}
-    flags=[]
-    # These are descriptive cross-market tensions, not invented probabilities.
-    if fair.get("o25") is not None and fair.get("u35") is not None:
-        if fair["o25"] >= 58 and fair["u35"] >= 62:
-            flags.append("Piyasa 2–3 toplam gol bandında yoğunlaşıyor: 2,5 Üst ve 3,5 Alt birlikte güçlü fiyatlanmış.")
-    if fair.get("btts") is not None and fair.get("u25") is not None:
-        if fair["btts"] >= 58 and fair["u25"] >= 58:
-            flags.append("KG Var ile 2,5 Alt aynı anda yüksek adil olasılıkta; 1-1 ekseniyle uyumlu dar bir senaryo olabilir.")
-    if fair.get("nobtts") is not None and fair.get("o25") is not None:
-        if fair["nobtts"] >= 58 and fair["o25"] >= 58:
-            flags.append("KG Yok + 2,5 Üst birlikte güçlü; tek taraflı 3+ gol senaryosu fiyatlaması görülebilir.")
-    return flags
-
-# =========================================================
-# HOME / META
-# =========================================================
-
-@app.get("/")
-def root():
-    return FileResponse(ROOT / "index.html")
-
-
-@app.get("/api/meta")
-def meta():
-    completed = sum(score(x.get("ft")) is not None for x in HISTORY)
-    return {
-        "history_rows": len(HISTORY),
-        "completed_rows": completed,
-        "markets": MARKETS,
-        "version": "4.0.1",
-        "rule": "Historical statistics use stored real match results; model probabilities are mathematical estimates derived from supplied market odds."
-    }
-
-
-# =========================================================
-# ODDS + MODEL
-# =========================================================
+def insights(s,prob,matched):
+ vals=[(k,v) for k,v in s.items() if k not in {'sample_ft','sample_ht','avg_goals','avg_home_goals','avg_away_goals','top_scores'} and isinstance(v,(int,float))]
+ vals.sort(key=lambda x:x[1],reverse=True)
+ why=[]
+ if matched: why.append(f'{matched} gerçek geçmiş maç mevcut filtreleri karşıladı.')
+ if vals: why.append(f'Geçmiş sonuçlarda en yüksek oran {vals[0][0]}: %{vals[0][1]:.1f}.')
+ if prob: why.append(f'{len(prob)} tam piyasa grubunda bookmaker marjı temizlenebildi.')
+ if not prob: why.append('Tam karşıt oran grubu olmadığı için marjsız piyasa olasılığı üretilmedi.')
+ return why
 
 class OddsReq(BaseModel):
-    odds: dict[str, float | None]
-    tolerance: float = Field(0.05, ge=0, le=5)
-    league: str = ""
-    limit: int = Field(10000, ge=1, le=50000)
+ odds:dict[str,float|None]; tolerance:float=Field(0.05,ge=0,le=5); league:str=''; limit:int=Field(500,ge=1,le=5000)
 
+@app.get('/')
+def root(): return FileResponse(ROOT/'index.html')
+@app.get('/api/meta')
+def meta():
+ return {'history_rows':len(HISTORY),'completed_rows':sum(score(x.get('ft')) is not None for x in HISTORY),'markets':MARKETS,'version':'4.2.2','rule':'Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır. Türetilmiş olasılıklar açıkça matematiksel olarak etiketlenir.'}
 
-@app.post("/api/odds")
-def odds_scan(req: OddsReq):
-    q = {}
-    for key, value in req.odds.items():
-        if key not in MARKETS or value is None:
-            continue
-        try:
-            q[key] = float(value)
-        except (TypeError, ValueError):
-            continue
+@app.post('/api/odds')
+def odds_scan(req:OddsReq):
+ q={}
+ for k,v in req.odds.items():
+  if k not in MARKETS or v is None: continue
+  try: f=float(v)
+  except: continue
+  if f>1: q[k]=f
+ if len(q)<2: raise HTTPException(400,'En az 2 desteklenen gerçek oran bulunmalı.')
+ pool,matches,minimum,fallback=match_rows(q,req.tolerance,req.league)
+ s=stats(matches); prob=probability_engine(q); relationships=relationship_engine(matches); comparison=market_comparison(s,prob)
+ # tolerance sensitivity: same exact query, no invented data
+ sensitivity=[]
+ for t in sorted(set([max(0.01,round(req.tolerance/2,3)),round(req.tolerance,3),round(req.tolerance*2,3)])):
+  _,mm,_,_=match_rows(q,t,req.league); sensitivity.append({'tolerance':t,'matched':len(mm)})
+ # funnel: EXACTLY the same matching rule as match_rows; never a separate sequential filter
+ # A row is eligible only if at least two queried historical odds exist. Then we show
+ # cumulative matched-odds thresholds up to the same minimum used by the result set.
+ eligible=[]
+ for r in pool:
+  compared=0; matched_count=0
+  for k,target in q.items():
+   try: v=float(r.get(k))
+   except: continue
+   compared+=1
+   if abs(v-target)<=req.tolerance: matched_count+=1
+  if compared>=2: eligible.append((r,matched_count,compared))
+ funnel=[{'step':'Sonuçlu geçmiş maç','count':len(pool)},
+         {'step':'En az 2 karşılaştırılabilir oran','count':len(eligible)}]
+ for threshold in range(1, minimum+1):
+  funnel.append({'step':f'En az {threshold}/{len(q)} oran ±{req.tolerance} eşleşti',
+                 'count':sum(1 for _,m,_ in eligible if m>=threshold)})
+ # Strict mode: the final funnel count is the returned match population.
+ # inverse examples for strongest historical outcome among supported result keys
+ outcome_map={'MS 1':'h','MS X':'d','MS 2':'a','2,5 Üst':'o25','2,5 Alt':'u25','KG Var':'btts','KG Yok':'nobtts','3,5 Üst':'o35','3,5 Alt':'u35'}
+ candidates=[(name,s.get(name)) for name in outcome_map if isinstance(s.get(name),(int,float))]
+ strongest=max(candidates,key=lambda x:x[1]) if candidates else None
+ losses=[]
+ if strongest:
+  kk=outcome_map[strongest[0]]
+  for r in matches:
+   ft=score(r.get('ft')); ht=score(r.get('ht'))
+   if ft and key_result(kk,ft,ht) is False:
+    item={k:r.get(k) for k in ['date','league','home','away','ht','ft']}
+    item.update({'_matched_odds':r.get('_matched_odds'),'_compared_odds':r.get('_compared_odds'),'_match_ratio':r.get('_match_ratio'),'_differences':r.get('_differences',{})})
+    losses.append(item)
+ # League/date breakdown of the exact same matched sample; descriptive only.
+ league_counts={}
+ date_counts={}
+ for r in matches:
+  lg=str(r.get('league') or 'Bilinmiyor').strip() or 'Bilinmiyor'
+  dt=str(r.get('date') or 'Bilinmiyor').strip() or 'Bilinmiyor'
+  league_counts[lg]=league_counts.get(lg,0)+1
+  ym=dt[:7] if len(dt)>=7 and dt[4:5]=='-' else dt
+  date_counts[ym]=date_counts.get(ym,0)+1
+ breakdown={
+  'leagues':[{'name':k,'count':v,'percent':round(100*v/len(matches),1)} for k,v in sorted(league_counts.items(),key=lambda x:(-x[1],x[0]))[:12]] if matches else [],
+  'periods':[{'name':k,'count':v,'percent':round(100*v/len(matches),1)} for k,v in sorted(date_counts.items(),key=lambda x:x[0],reverse=True)[:12]] if matches else [],
+  'sample':len(matches)
+ }
+ sample_audit={
+  'matched_sample':len(matches),
+  'completed_pool':len(pool),
+  'coverage_percent':round(100*len(matches)/len(pool),2) if pool else 0,
+  'warning':'Örneklem 30 maçın altında; yüzdeleri tek başına güçlü kanıt olarak yorumlama.' if len(matches)<30 else None,
+  'source':'history.json içindeki sonuçlu gerçek geçmiş maçlar'
+ }
+ return {'method':f'{len(q)} gerçek oran tarandı. En az {minimum}/{len(q)} oran ±{req.tolerance} içinde eşleşti.','sample_audit':sample_audit,'searched_odds':q,'searched_count':len(q),'tolerance':req.tolerance,'pool_size':len(pool),'matched':len(matches),'returned':min(len(matches),req.limit),'minimum_match_count':minimum,'best_match_count':matches[0]['_matched_odds'] if matches else 0,'stats':s,'probability_engine':prob,'market_comparison':comparison,'relationships':relationships,'breakdown':breakdown,'sensitivity':sensitivity,'funnel':funnel,'strongest_history':{'market':strongest[0],'percent':strongest[1]} if strongest else None,'counterexamples':losses[:12],'why':insights(s,prob,len(matches)),'matches':matches[:req.limit]}
 
-    if len(q) < 2:
-        raise HTTPException(status_code=400, detail="En az 2 desteklenen gerçek oran bulunmalı.")
-
-    pool = [r for r in HISTORY if score(r.get("ft")) is not None]
-
-    if req.league.strip():
-        league_query = req.league.strip().casefold()
-        pool = [r for r in pool if league_query in str(r.get("league", "")).casefold()]
-
-    candidates = []
-
-    for row in pool:
-        differences = {}
-        matched_differences = {}
-        compared = 0
-        matched_count = 0
-
-        for key, target in q.items():
-            historical = row.get(key)
-            if historical is None:
-                continue
-            try:
-                historical = float(historical)
-            except (TypeError, ValueError):
-                continue
-
-            compared += 1
-            diff = abs(historical - target)
-            differences[key] = round(diff, 3)
-
-            if diff <= req.tolerance:
-                matched_count += 1
-                matched_differences[key] = round(diff, 3)
-
-        if compared < 2:
-            continue
-
-        item = dict(row)
-        item["_matched_odds"] = matched_count
-        item["_compared_odds"] = compared
-        item["_match_ratio"] = round(matched_count / compared * 100, 1)
-        item["_differences"] = differences
-        item["_matched_differences"] = matched_differences
-        item["_total_difference"] = round(sum(differences.values()), 3)
-        candidates.append(item)
-
-    searched_count = len(q)
-    minimum_match_count = max(2, (searched_count + 1) // 2)
-
-    matches = [x for x in candidates if x["_matched_odds"] >= minimum_match_count]
-    fallback = False
-
-    if not matches and candidates:
-        best_match_count = max(x["_matched_odds"] for x in candidates)
-        if best_match_count > 0:
-            matches = [x for x in candidates if x["_matched_odds"] == best_match_count]
-            fallback = True
-
-    matches.sort(key=lambda x: (
-        -x["_matched_odds"],
-        -x["_match_ratio"],
-        x["_total_difference"]
-    ))
-
-    total_matches = len(matches)
-    returned_matches = matches[:req.limit]
-    best_match_count = matches[0]["_matched_odds"] if matches else 0
-    historical_stats = stats(matches)
-    model = build_model(q)
-    probability_engine = market_probability_engine(q)
-    consensus = build_consensus(historical_stats, model)
-
-    sensitivity=[]
-    for t in sorted(set([max(0.01, round(req.tolerance/2,3)), round(req.tolerance,3), round(req.tolerance*1.5,3), round(req.tolerance*2,3)])):
-        c, distribution = count_matches(pool, q, t)
-        sensitivity.append({"tolerance":t,"matches":c,"match_distribution":distribution})
-
-    funnel=[]
-    remaining=pool
-    for key,target in q.items():
-        before=len(remaining)
-        nxt=[]
-        for r in remaining:
-            v=r.get(key)
-            try: ok=v is not None and abs(float(v)-target)<=req.tolerance
-            except: ok=False
-            if ok: nxt.append(r)
-        funnel.append({"market":key,"before":before,"after":len(nxt),"eliminated":before-len(nxt)})
-        remaining=nxt
-
-    if fallback:
-        method = (
-            f"{searched_count} oran tarandı. En güçlü gerçek eşleşmeler gösteriliyor. "
-            f"En yüksek eşleşme: {best_match_count}/{searched_count}."
-        )
-    else:
-        method = (
-            f"{searched_count} oran tarandı. En az {minimum_match_count}/{searched_count} oranı "
-            f"±{req.tolerance} içinde eşleşen maçlar gösteriliyor. "
-            f"En güçlü eşleşme: {best_match_count}/{searched_count}."
-        )
-
-    return {
-        "method": method,
-        "searched_odds": q,
-        "searched_count": searched_count,
-        "tolerance": req.tolerance,
-        "pool_size": len(pool),
-        "matched": total_matches,
-        "returned": len(returned_matches),
-        "minimum_match_count": minimum_match_count,
-        "best_match_count": best_match_count,
-        "stats": historical_stats,
-        "model": model,
-        "probability_engine": probability_engine,
-        "contradictions": contradiction_flags(probability_engine),
-        "sensitivity": sensitivity,
-        "funnel": funnel,
-        "consensus": consensus,
-        "matches": returned_matches
-    }
-
-
-# =========================================================
-# +6 ANALYSIS
-# =========================================================
-
-class Plus6Req(BaseModel):
-    o25: float | None = None
-    o35: float | None = None
-    o45: float | None = None
-    btts: float | None = None
-    iy05: float | None = None
-    nofirst: float | None = None
-
-
-@app.post("/api/plus6")
-def plus6(q: Plus6Req):
-    rules = [
-        ("2,5 Üst", q.o25, 1.20, 1.28),
-        ("3,5 Üst", q.o35, 1.66, 1.89),
-        ("4,5 Üst", q.o45, 2.64, 3.14),
-        ("KG Var", q.btts, 1.22, 1.87)
-    ]
-
-    output = []
-    hit = 0
-
-    for name, value, lo, hi in rules:
-        matched = value is not None and lo <= value <= hi
-        if matched:
-            hit += 1
-        output.append({
-            "name": name,
-            "value": value,
-            "range": [lo, hi],
-            "match": matched
-        })
-
-    last = (
-        (q.iy05 is not None and 1.05 <= q.iy05 <= 1.08)
-        or
-        (q.nofirst is not None and 22.10 <= q.nofirst <= 26.00)
-    )
-
-    if last:
-        hit += 1
-
-    output.append({
-        "name": "İY 0,5 Üst veya İlk Gol Olmaz",
-        "values": [q.iy05, q.nofirst],
-        "ranges": [[1.05, 1.08], [22.10, 26.00]],
-        "match": last
-    })
-
-    return {
-        "matched_rules": hit,
-        "total_rules": 5,
-        "compatibility_percent": round(hit / 5 * 100),
-        "rules": output,
-        "note": "Bu bölüm yalnızca kayıtlı +6 referans bantlarıyla karşılaştırmadır."
-    }
+class Plus6Req(BaseModel): o25:float|None=None; o35:float|None=None; o45:float|None=None; btts:float|None=None; iy05:float|None=None; nofirst:float|None=None
+@app.post('/api/plus6')
+def plus6(q:Plus6Req):
+ rules=[('2,5 Üst',q.o25,1.20,1.28),('3,5 Üst',q.o35,1.66,1.89),('4,5 Üst',q.o45,2.64,3.14),('KG Var',q.btts,1.22,1.87)]
+ output=[]; hit=0
+ for name,v,lo,hi in rules:
+  m=v is not None and lo<=v<=hi; hit+=m; output.append({'name':name,'value':v,'range':[lo,hi],'match':m})
+ last=(q.iy05 is not None and 1.05<=q.iy05<=1.08) or (q.nofirst is not None and 22.10<=q.nofirst<=26.00); hit+=last
+ output.append({'name':'İY 0,5 Üst veya İlk Gol Olmaz','values':[q.iy05,q.nofirst],'ranges':[[1.05,1.08],[22.10,26.00]],'match':last})
+ return {'matched_rules':hit,'total_rules':5,'compatibility_percent':round(hit/5*100),'rules':output,'note':'Yalnızca kayıtlı +6 referans bantlarıyla karşılaştırmadır.'}
