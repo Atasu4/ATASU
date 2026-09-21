@@ -23,10 +23,11 @@ MARKETS = [
     "btts", "nobtts",
     "u35", "o35",
     "iyu15", "iyo15",
+    "odd", "even",
     "g6"
 ]
 
-app = FastAPI(title="ATASU Intelligence", version="4.0.0")
+app = FastAPI(title="ATASU Intelligence", version="4.0.1")
 
 static_dir = ROOT / "static"
 if static_dir.exists():
@@ -364,6 +365,7 @@ def market_probability_engine(odds):
         ("3,5 Gol", [("u35", "3,5 Alt"), ("o35", "3,5 Üst")]),
         ("KG", [("btts", "KG Var"), ("nobtts", "KG Yok")]),
         ("İY 1,5", [("iyu15", "İY 1,5 Alt"), ("iyo15", "İY 1,5 Üst")]),
+        ("Tek/Çift", [("odd", "Tek"), ("even", "Çift")]),
     ]
     out=[]
     for name, members in groups:
