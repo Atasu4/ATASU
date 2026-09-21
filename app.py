@@ -50,17 +50,88 @@ def meta():
     return {'history_rows':len(HISTORY),'completed_rows':sum(score(x.get('ft')) is not None for x in HISTORY),'markets':MARKETS,'rule':'Only supplied/stored data are used.'}
 
 @app.post('/api/odds')
-def odds(req:OddsReq):
-    q={k:float(v) for k,v in req.odds.items() if k in MARKETS and v is not None}
-    if len(q)<2: raise HTTPException(400,'En az 2 gerçek oran girilmeli.')
-    pool=[r for r in HISTORY if score(r.get('ft'))]
-    if req.league.strip(): pool=[r for r in pool if req.league.casefold() in str(r.get('league','')).casefold()]
-    matches=[]
+def odds(req: OddsReq):
+    # Kullanıcının gerçekten girdiği oranları al
+    q = {}
+    for k, v in req.odds.items():
+        if k in MARKETS and v is not None:
+            try:
+                q[k] = float(v)
+            except (TypeError, ValueError):
+                pass
+
+    if len(q) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail='En az 2 gerçek oran girilmeli'
+        )
+
+    # Sadece gerçek skoru bulunan geçmiş maçlar
+    pool = [
+        r for r in HISTORY
+        if score(r.get('ft'))
+    ]
+
+    # Lig filtresi
+    if req.league.strip():
+        league_query = req.league.strip().lower()
+        pool = [
+            r for r in pool
+            if league_query in str(r.get('league', '')).lower()
+        ]
+
+    matches = []
+
     for r in pool:
-        if not all(r.get(k) is not None and abs(float(r[k])-v)<=req.tolerance for k,v in q.items()): continue
-        matches.append(r)
-    matches=matches[:req.limit]
-    return {'method':f'Girilen her oranda mutlak ±{req.tolerance:.2f} tolerans; gizli puanlama yok.','entered_markets':q,'scanned':len(pool),'matched_total':sum(1 for r in pool if all(r.get(k) is not None and abs(float(r[k])-v)<=req.tolerance for k,v in q.items())),'returned':len(matches),'stats':stats(matches),'matches':matches[:100]}
+        differences = {}
+        valid = True
+
+        for k, target in q.items():
+            historical = r.get(k)
+
+            if historical is None:
+                valid = False
+                break
+
+            try:
+                historical = float(historical)
+            except (TypeError, ValueError):
+                valid = False
+                break
+
+            diff = abs(historical - target)
+
+            # HER oran ayrı ayrı tolerans içinde olmalı
+            if diff > req.tolerance:
+                valid = False
+                break
+
+            differences[k] = round(diff, 3)
+
+        if valid:
+            item = dict(r)
+            item['_differences'] = differences
+            item['_total_difference'] = round(
+                sum(differences.values()), 3
+            )
+            matches.append(item)
+
+    # En yakın geçmiş maçlar önce gelsin
+    matches.sort(
+        key=lambda x: x.get('_total_difference', 999)
+    )
+
+    matches = matches[:req.limit]
+
+    return {
+        'method': f'Girilen her oran ayrı ayrı ±{req.tolerance} tolerans',
+        'searched_odds': q,
+        'tolerance': req.tolerance,
+        'pool_size': len(pool),
+        'matched': len(matches),
+        'stats': stats(matches),
+        'matches': matches
+    }
 
 class CodeImport(BaseModel): rows:list[dict]
 @app.post('/api/codes/import')
