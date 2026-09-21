@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: profesyonel-oran-analiz
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/meta
+    autoDeploy: true
