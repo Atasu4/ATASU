@@ -3,37 +3,55 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pathlib import Path
-import json, re, sqlite3
+import json
+import re
+import sqlite3
 
 ROOT = Path(__file__).parent
-HISTORY = json.loads((ROOT / 'data/history.json').read_text(encoding='utf-8'))
-DB = ROOT / 'data/codes.db'
+DATA_DIR = ROOT / "data"
+HISTORY_FILE = DATA_DIR / "history.json"
+DB = DATA_DIR / "codes.db"
+
+if not HISTORY_FILE.exists():
+    raise RuntimeError("data/history.json bulunamadı.")
+
+HISTORY = json.loads(
+    HISTORY_FILE.read_text(encoding="utf-8")
+)
 
 MARKETS = [
-    'h','d','a',
-    'u25','o25',
-    'btts','nobtts',
-    'u35','o35',
-    'iyu15','iyo15',
-    'g6'
+    "h", "d", "a",
+    "u25", "o25",
+    "btts", "nobtts",
+    "u35", "o35",
+    "iyu15", "iyo15",
+    "g6"
 ]
 
 app = FastAPI(
-    title='Profesyonel Oran + Kod +6 Analiz',
-    version='2.0.0'
+    title="ATASU Analiz",
+    version="2.0.0"
 )
 
-app.mount(
-    '/static',
-    StaticFiles(directory=ROOT / 'static'),
-    name='static'
-)
+static_dir = ROOT / "static"
 
+if static_dir.exists():
+    app.mount(
+        "/static",
+        StaticFiles(directory=static_dir),
+        name="static"
+    )
+
+
+# =========================================================
+# DATABASE
+# =========================================================
 
 def init_db():
+    DATA_DIR.mkdir(exist_ok=True)
+
     with sqlite3.connect(DB) as c:
-        c.execute(
-            '''
+        c.execute("""
             CREATE TABLE IF NOT EXISTS codes(
                 code TEXT,
                 league TEXT,
@@ -42,175 +60,236 @@ def init_db():
                 ht TEXT,
                 ft TEXT
             )
-            '''
-        )
+        """)
 
 
 init_db()
 
 
-def score(s):
+# =========================================================
+# HELPERS
+# =========================================================
+
+def score(value):
     m = re.fullmatch(
-        r'\s*(\d+)\s*-\s*(\d+)\s*',
-        str(s or '')
+        r"\s*(\d+)\s*-\s*(\d+)\s*",
+        str(value or "")
     )
-    return (
-        (int(m.group(1)), int(m.group(2)))
-        if m else None
-    )
+
+    if not m:
+        return None
+
+    return int(m.group(1)), int(m.group(2))
 
 
 def stats(rows):
+
     z = {
-        k: 0 for k in [
-            'home','draw','away',
-            'o25','u25',
-            'btts','nobtts',
-            'o35','u35',
-            'htHome','htDraw','htAway',
-            'fh','sh','eq'
-        ]
+        "home": 0,
+        "draw": 0,
+        "away": 0,
+
+        "o25": 0,
+        "u25": 0,
+
+        "btts": 0,
+        "nobtts": 0,
+
+        "o35": 0,
+        "u35": 0,
+
+        "htHome": 0,
+        "htDraw": 0,
+        "htAway": 0,
+
+        "fh": 0,
+        "sh": 0,
+        "eq": 0
     }
 
     n = 0
     nh = 0
 
     for r in rows:
-        ft = score(r.get('ft'))
+
+        ft = score(r.get("ft"))
 
         if not ft:
             continue
 
         n += 1
-        h, a = ft
-        total = h + a
 
-        z[
-            'home' if h > a
-            else 'draw' if h == a
-            else 'away'
-        ] += 1
+        home_goals, away_goals = ft
+        total = home_goals + away_goals
 
-        z['o25' if total >= 3 else 'u25'] += 1
-        z[
-            'btts'
-            if h > 0 and a > 0
-            else 'nobtts'
-        ] += 1
-        z['o35' if total >= 4 else 'u35'] += 1
+        if home_goals > away_goals:
+            z["home"] += 1
 
-        ht = score(r.get('ht'))
+        elif home_goals == away_goals:
+            z["draw"] += 1
+
+        else:
+            z["away"] += 1
+
+        if total >= 3:
+            z["o25"] += 1
+        else:
+            z["u25"] += 1
+
+        if home_goals > 0 and away_goals > 0:
+            z["btts"] += 1
+        else:
+            z["nobtts"] += 1
+
+        if total >= 4:
+            z["o35"] += 1
+        else:
+            z["u35"] += 1
+
+        ht = score(r.get("ht"))
 
         if ht:
+
             nh += 1
-            x, y = ht
 
-            z[
-                'htHome'
-                if x > y
-                else 'htDraw'
-                if x == y
-                else 'htAway'
-            ] += 1
+            ht_home, ht_away = ht
 
-            first_half = x + y
+            if ht_home > ht_away:
+                z["htHome"] += 1
+
+            elif ht_home == ht_away:
+                z["htDraw"] += 1
+
+            else:
+                z["htAway"] += 1
+
+            first_half = ht_home + ht_away
             second_half = total - first_half
 
-            z[
-                'fh'
-                if first_half > second_half
-                else 'sh'
-                if second_half > first_half
-                else 'eq'
-            ] += 1
+            if first_half > second_half:
+                z["fh"] += 1
 
-    def p(k, d):
-        return round(100 * z[k] / d, 1) if d else None
+            elif second_half > first_half:
+                z["sh"] += 1
+
+            else:
+                z["eq"] += 1
+
+    def pct(key, denominator):
+
+        if not denominator:
+            return None
+
+        return round(
+            100 * z[key] / denominator,
+            1
+        )
 
     return {
-        'sample_ft': n,
-        'sample_ht': nh,
+        "sample_ft": n,
+        "sample_ht": nh,
 
-        'MS 1': p('home', n),
-        'MS X': p('draw', n),
-        'MS 2': p('away', n),
+        "MS 1": pct("home", n),
+        "MS X": pct("draw", n),
+        "MS 2": pct("away", n),
 
-        '2,5 Üst': p('o25', n),
-        '2,5 Alt': p('u25', n),
+        "2,5 Üst": pct("o25", n),
+        "2,5 Alt": pct("u25", n),
 
-        'KG Var': p('btts', n),
-        'KG Yok': p('nobtts', n),
+        "KG Var": pct("btts", n),
+        "KG Yok": pct("nobtts", n),
 
-        '3,5 Üst': p('o35', n),
-        '3,5 Alt': p('u35', n),
+        "3,5 Üst": pct("o35", n),
+        "3,5 Alt": pct("u35", n),
 
-        'İY 1': p('htHome', nh),
-        'İY X': p('htDraw', nh),
-        'İY 2': p('htAway', nh),
+        "İY 1": pct("htHome", nh),
+        "İY X": pct("htDraw", nh),
+        "İY 2": pct("htAway", nh),
 
-        'Daha çok gol 1.Y': p('fh', nh),
-        'Daha çok gol 2.Y': p('sh', nh),
-        'Yarılar eşit': p('eq', nh)
+        "Daha çok gol 1.Y": pct("fh", nh),
+        "Daha çok gol 2.Y": pct("sh", nh),
+        "Yarılar eşit": pct("eq", nh)
     }
 
 
 # =========================================================
-# ANA SAYFA
+# HOME
 # =========================================================
 
-@app.get('/')
+@app.get("/")
 def root():
-    return FileResponse(ROOT / 'index.html')
+    return FileResponse(ROOT / "index.html")
 
 
-@app.get('/api/meta')
+@app.get("/api/meta")
 def meta():
+
+    completed = sum(
+        score(x.get("ft")) is not None
+        for x in HISTORY
+    )
+
+    with sqlite3.connect(DB) as c:
+        stored_codes = c.execute(
+            "SELECT COUNT(*) FROM codes"
+        ).fetchone()[0]
+
     return {
-        'history_rows': len(HISTORY),
-        'completed_rows': sum(
-            score(x.get('ft')) is not None
-            for x in HISTORY
-        ),
-        'markets': MARKETS,
-        'rule': 'Only supplied/stored data are used.'
+        "history_rows": len(HISTORY),
+        "completed_rows": completed,
+        "stored_codes": stored_codes,
+        "markets": MARKETS,
+        "rule": "Only supplied/stored real data are used."
     }
 
 
 # =========================================================
-# ORAN ANALİZİ
+# ODDS
 # =========================================================
 
 class OddsReq(BaseModel):
     odds: dict[str, float | None]
-    tolerance: float = Field(0.05, ge=0, le=5)
-    league: str = ''
-    limit: int = Field(2000, ge=1, le=10000)
+    tolerance: float = Field(
+        0.05,
+        ge=0,
+        le=5
+    )
+    league: str = ""
+    limit: int = Field(
+        10000,
+        ge=1,
+        le=50000
+    )
 
 
-@app.post('/api/odds')
-def odds(req: OddsReq):
+@app.post("/api/odds")
+def odds_scan(req: OddsReq):
 
     q = {}
 
-    for k, v in req.odds.items():
+    for key, value in req.odds.items():
 
-        if k not in MARKETS or v is None:
+        if key not in MARKETS:
+            continue
+
+        if value is None:
             continue
 
         try:
-            q[k] = float(v)
+            q[key] = float(value)
+
         except (TypeError, ValueError):
-            pass
+            continue
 
     if len(q) < 2:
         raise HTTPException(
             status_code=400,
-            detail='Analiz için en az 2 desteklenen gerçek oran gerekli.'
+            detail="En az 2 desteklenen gerçek oran bulunmalı."
         )
 
     pool = [
         r for r in HISTORY
-        if score(r.get('ft'))
+        if score(r.get("ft")) is not None
     ]
 
     if req.league.strip():
@@ -219,20 +298,20 @@ def odds(req: OddsReq):
 
         pool = [
             r for r in pool
-            if league_query
-            in str(r.get('league', '')).casefold()
+            if league_query in
+            str(r.get("league", "")).casefold()
         ]
 
     matches = []
 
-    for r in pool:
+    for row in pool:
 
         differences = {}
         valid = True
 
-        for k, target in q.items():
+        for key, target in q.items():
 
-            historical = r.get(k)
+            historical = row.get(key)
 
             if historical is None:
                 valid = False
@@ -240,6 +319,7 @@ def odds(req: OddsReq):
 
             try:
                 historical = float(historical)
+
             except (TypeError, ValueError):
                 valid = False
                 break
@@ -252,15 +332,18 @@ def odds(req: OddsReq):
                 valid = False
                 break
 
-            differences[k] = round(diff, 3)
+            differences[key] = round(
+                diff,
+                3
+            )
 
         if valid:
 
-            item = dict(r)
+            item = dict(row)
 
-            item['_differences'] = differences
+            item["_differences"] = differences
 
-            item['_total_difference'] = round(
+            item["_total_difference"] = round(
                 sum(differences.values()),
                 3
             )
@@ -269,43 +352,43 @@ def odds(req: OddsReq):
 
     matches.sort(
         key=lambda x:
-        x.get('_total_difference', 999999)
+        x.get("_total_difference", 999999)
     )
 
-    total_matched = len(matches)
+    total_matches = len(matches)
 
-    shown = matches[:req.limit]
+    returned_matches = matches[:req.limit]
 
     return {
-        'method':
-            f'Girilen her desteklenen oran ayrı ayrı ±{req.tolerance} tolerans içinde eşleştirildi.',
+        "method":
+            f"Girilen {len(q)} desteklenen oranın tamamı "
+            f"ayrı ayrı ±{req.tolerance} tolerans içinde arandı.",
 
-        'searched_odds': q,
+        "searched_odds": q,
 
-        'tolerance': req.tolerance,
+        "tolerance": req.tolerance,
 
-        'pool_size': len(pool),
+        "pool_size": len(pool),
 
-        'matched': total_matched,
+        "matched": total_matches,
 
-        'returned': len(shown),
+        "returned": len(returned_matches),
 
-        # İSTATİSTİK TÜM EŞLEŞMELERDEN
-        'stats': stats(matches),
+        "stats": stats(matches),
 
-        'matches': shown
+        "matches": returned_matches
     }
 
 
 # =========================================================
-# KOD VERİTABANI IMPORT
+# CODE IMPORT
 # =========================================================
 
 class CodeImport(BaseModel):
     rows: list[dict]
 
 
-@app.post('/api/codes/import')
+@app.post("/api/codes/import")
 def code_import(req: CodeImport):
 
     clean = []
@@ -313,271 +396,259 @@ def code_import(req: CodeImport):
     for r in req.rows:
 
         code = re.sub(
-            r'\D',
-            '',
-            str(r.get('code', ''))
+            r"\D",
+            "",
+            str(r.get("code", ""))
         )
 
-        if not re.fullmatch(r'\d{5}', code):
+        if not re.fullmatch(
+            r"\d{5}",
+            code
+        ):
             continue
 
-        clean.append(
-            (
-                code,
-                str(r.get('league', '')),
-                str(r.get('home', '')),
-                str(r.get('away', '')),
-                str(r.get('ht', '')),
-                str(r.get('ft', ''))
-            )
-        )
+        clean.append((
+            code,
+            str(r.get("league", "")),
+            str(r.get("home", "")),
+            str(r.get("away", "")),
+            str(r.get("ht", "")),
+            str(r.get("ft", ""))
+        ))
 
     with sqlite3.connect(DB) as c:
 
-        c.execute('DELETE FROM codes')
+        c.execute(
+            "DELETE FROM codes"
+        )
 
         c.executemany(
-            'INSERT INTO codes VALUES(?,?,?,?,?,?)',
+            """
+            INSERT INTO codes
+            VALUES(?,?,?,?,?,?)
+            """,
             clean
         )
 
     return {
-        'saved': len(clean)
+        "saved": len(clean)
     }
 
 
 # =========================================================
-# TEK KOD TARAMA
+# SINGLE CODE
 # =========================================================
 
 class CodeReq(BaseModel):
     code: str
-    direction: str = 'exact'
-    digits: int = Field(5, ge=1, le=5)
-    league: str = ''
+    direction: str = "exact"
+    digits: int = Field(
+        5,
+        ge=1,
+        le=5
+    )
+    league: str = ""
 
 
-def load_codes():
+@app.post("/api/code")
+def code_scan(req: CodeReq):
+
+    result = scan_codes_internal(
+        [req.code],
+        req.direction,
+        req.digits,
+        req.league
+    )
+
+    if not result["results"]:
+        return {
+            "stored": result["stored"],
+            "matched": 0,
+            "stats": stats([]),
+            "matches": []
+        }
+
+    first = result["results"][0]
+
+    return {
+        "stored": result["stored"],
+        "matched": first["matched"],
+        "stats": first["stats"],
+        "matches": first["matches"]
+    }
+
+
+# =========================================================
+# BULK CODE
+# =========================================================
+
+class CodesReq(BaseModel):
+    codes: list[str]
+    direction: str = "exact"
+    digits: int = Field(
+        5,
+        ge=1,
+        le=5
+    )
+    league: str = ""
+
+
+def scan_codes_internal(
+    supplied_codes,
+    direction,
+    digits,
+    league
+):
+
+    if direction not in {
+        "exact",
+        "start",
+        "end"
+    }:
+        raise HTTPException(
+            status_code=400,
+            detail="Geçersiz kod eşleşme yönü."
+        )
+
+    clean_codes = []
+
+    for value in supplied_codes:
+
+        code = re.sub(
+            r"\D",
+            "",
+            str(value)
+        )
+
+        if re.fullmatch(
+            r"\d{5}",
+            code
+        ):
+            clean_codes.append(code)
+
+    clean_codes = list(
+        dict.fromkeys(clean_codes)
+    )
+
+    if not clean_codes:
+        raise HTTPException(
+            status_code=400,
+            detail="Geçerli 5 haneli kod bulunamadı."
+        )
 
     with sqlite3.connect(DB) as c:
 
-        rows = [
+        db_rows = [
             dict(
                 zip(
                     [
-                        'code',
-                        'league',
-                        'home',
-                        'away',
-                        'ht',
-                        'ft'
+                        "code",
+                        "league",
+                        "home",
+                        "away",
+                        "ht",
+                        "ft"
                     ],
-                    x
+                    row
                 )
             )
-            for x in c.execute(
-                'SELECT * FROM codes'
+            for row in c.execute(
+                "SELECT * FROM codes"
             )
         ]
 
-    return rows
-
-
-def code_matches(
-    stored_code,
-    search_code,
-    direction,
-    digits
-):
-
-    if direction == 'exact':
-        return stored_code == search_code
-
-    if direction == 'start':
-        return stored_code.startswith(
-            search_code[:digits]
-        )
-
-    if direction == 'end':
-        return stored_code.endswith(
-            search_code[-digits:]
-        )
-
-    return False
-
-
-@app.post('/api/code')
-def code_scan(req: CodeReq):
-
-    code = re.sub(
-        r'\D',
-        '',
-        req.code
+    league_query = (
+        league.strip().casefold()
     )
 
-    if not re.fullmatch(r'\d{5}', code):
+    if league_query:
 
-        raise HTTPException(
-            400,
-            'Kod tam 5 haneli olmalı.'
-        )
-
-    rows = load_codes()
-
-    found = []
-
-    for r in rows:
-
-        if not code_matches(
-            r['code'],
-            code,
-            req.direction,
-            req.digits
-        ):
-            continue
-
-        if (
-            req.league.strip()
-            and req.league.casefold()
-            not in r['league'].casefold()
-        ):
-            continue
-
-        found.append(r)
-
-    return {
-        'stored': len(rows),
-        'matched': len(found),
-        'searched_code': code,
-        'stats': stats(found),
-        'matches': found
-    }
-
-
-# =========================================================
-# TOPLU KOD TARAMA
-# =========================================================
-
-class BulkCodeReq(BaseModel):
-    codes: list[str]
-    direction: str = 'exact'
-    digits: int = Field(5, ge=1, le=5)
-    league: str = ''
-
-
-@app.post('/api/codes/scan')
-def bulk_code_scan(req: BulkCodeReq):
-
-    search_codes = []
-
-    for raw in req.codes:
-
-        code = re.sub(
-            r'\D',
-            '',
-            str(raw)
-        )
-
-        if re.fullmatch(r'\d{5}', code):
-            search_codes.append(code)
-
-    # Tekrarlanan kodları kaldır
-    search_codes = list(
-        dict.fromkeys(search_codes)
-    )
-
-    if not search_codes:
-
-        raise HTTPException(
-            400,
-            'Geçerli 5 haneli kod bulunamadı.'
-        )
-
-    rows = load_codes()
-
-    all_matches = []
+        db_rows = [
+            r for r in db_rows
+            if league_query in
+            str(
+                r.get("league", "")
+            ).casefold()
+        ]
 
     results = []
+    all_matches = []
 
-    for code in search_codes:
+    for supplied in clean_codes:
+
+        if direction == "exact":
+
+            needle = supplied
+
+        elif direction == "start":
+
+            needle = supplied[:digits]
+
+        else:
+
+            needle = supplied[-digits:]
 
         found = []
 
-        for r in rows:
+        for row in db_rows:
 
-            if not code_matches(
-                r['code'],
-                code,
-                req.direction,
-                req.digits
-            ):
-                continue
+            stored_code = str(
+                row.get("code", "")
+            )
 
-            if (
-                req.league.strip()
-                and req.league.casefold()
-                not in r['league'].casefold()
-            ):
-                continue
+            if direction == "exact":
 
-            found.append(r)
+                hit = (
+                    stored_code == supplied
+                )
+
+            elif direction == "start":
+
+                hit = stored_code.startswith(
+                    needle
+                )
+
+            else:
+
+                hit = stored_code.endswith(
+                    needle
+                )
+
+            if hit:
+                found.append(row)
+                all_matches.append(row)
 
         results.append({
-            'code': code,
-            'matched': len(found),
-            'stats': stats(found),
-            'matches': found
+            "code": supplied,
+            "needle": needle,
+            "matched": len(found),
+            "stats": stats(found),
+            "matches": found
         })
 
-        all_matches.extend(found)
-
-    # Aynı geçmiş kayıt birden fazla kod tarafından
-    # yakalanırsa genel istatistikte bir kez say.
-    unique = []
-    seen = set()
-
-    for r in all_matches:
-
-        key = (
-            r.get('code'),
-            r.get('league'),
-            r.get('home'),
-            r.get('away'),
-            r.get('ht'),
-            r.get('ft')
-        )
-
-        if key in seen:
-            continue
-
-        seen.add(key)
-        unique.append(r)
-
     return {
-        'stored': len(rows),
-
-        'searched_count':
-            len(search_codes),
-
-        'searched_codes':
-            search_codes,
-
-        'matched_total':
-            len(unique),
-
-        'stats':
-            stats(unique),
-
-        'results':
-            results,
-
-        'matches':
-            unique
+        "stored": len(db_rows),
+        "searched_count": len(clean_codes),
+        "searched_codes": clean_codes,
+        "matched_total": len(all_matches),
+        "stats": stats(all_matches),
+        "results": results
     }
 
 
+@app.post("/api/codes/scan")
+def codes_scan(req: CodesReq):
+
+    return scan_codes_internal(
+        req.codes,
+        req.direction,
+        req.digits,
+        req.league
+    )
+
+
 # =========================================================
-# +6 REFERANS MOTORU
+# +6 ANALYSIS
 # =========================================================
 
 class Plus6Req(BaseModel):
@@ -589,53 +660,54 @@ class Plus6Req(BaseModel):
     nofirst: float | None = None
 
 
-@app.post('/api/plus6')
+@app.post("/api/plus6")
 def plus6(q: Plus6Req):
 
     rules = [
         (
-            '2,5 Üst',
+            "2,5 Üst",
             q.o25,
             1.20,
             1.28
         ),
         (
-            '3,5 Üst',
+            "3,5 Üst",
             q.o35,
             1.66,
             1.89
         ),
         (
-            '4,5 Üst',
+            "4,5 Üst",
             q.o45,
             2.64,
             3.14
         ),
         (
-            'KG Var',
+            "KG Var",
             q.btts,
             1.22,
             1.87
         )
     ]
 
-    out = []
+    output = []
     hit = 0
 
-    for name, val, lo, hi in rules:
+    for name, value, lo, hi in rules:
 
-        ok = (
-            val is not None
-            and lo <= val <= hi
+        matched = (
+            value is not None
+            and lo <= value <= hi
         )
 
-        hit += int(ok)
+        if matched:
+            hit += 1
 
-        out.append({
-            'name': name,
-            'value': val,
-            'range': [lo, hi],
-            'match': ok
+        output.append({
+            "name": name,
+            "value": value,
+            "range": [lo, hi],
+            "match": matched
         })
 
     last = (
@@ -650,31 +722,33 @@ def plus6(q: Plus6Req):
         )
     )
 
-    hit += int(last)
+    if last:
+        hit += 1
 
-    out.append({
-        'name':
-            'İY 0,5 Üst veya İlk Gol/Korner Olmaz',
+    output.append({
+        "name":
+            "İY 0,5 Üst veya İlk Gol Olmaz",
 
-        'values':
-            [q.iy05, q.nofirst],
+        "values": [
+            q.iy05,
+            q.nofirst
+        ],
 
-        'ranges':
-            [
-                [1.05, 1.08],
-                [22.10, 26.00]
-            ],
+        "ranges": [
+            [1.05, 1.08],
+            [22.10, 26.00]
+        ],
 
-        'match':
-            last
+        "match": last
     })
 
     return {
-        'matched_rules': hit,
-        'total_rules': 5,
-        'compatibility_percent':
-            hit * 20,
-        'rules': out,
-        'note':
-            'Bu yalnızca kullanıcının verdiği +6 referans bantlarına uyum oranıdır; tahmin değildir.'
+        "matched_rules": hit,
+        "total_rules": 5,
+        "compatibility_percent":
+            round(hit / 5 * 100),
+        "rules": output,
+        "note":
+            "Bu bölüm yalnızca kayıtlı +6 referans "
+            "bantlarıyla karşılaştırmadır."
     }
