@@ -446,7 +446,7 @@ def meta():
         "history_rows": len(HISTORY),
         "completed_rows": completed,
         "markets": MARKETS,
-        "version": "4.0.0",
+        "version": "4.0.1",
         "rule": "Historical statistics use stored real match results; model probabilities are mathematical estimates derived from supplied market odds."
     }
 
