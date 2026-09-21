@@ -26,7 +26,7 @@ MARKETS = [
     "g6"
 ]
 
-app = FastAPI(title="ATASU Analiz", version="3.0.0")
+app = FastAPI(title="ATASU Intelligence", version="4.0.0")
 
 static_dir = ROOT / "static"
 if static_dir.exists():
@@ -212,18 +212,56 @@ def build_model(odds):
 
     one_x_two = normalize_three(odds.get("h"), odds.get("d"), odds.get("a"))
 
-    if lambdas:
-        lam_total = sum(l * w for l, w in lambdas) / sum(w for _, w in lambdas)
-    else:
-        lam_total = 2.55
+    if not lambdas:
+        return {
+            "available": False,
+            "reason": "Gol beklentisi modeli için aynı baremde Alt ve Üst oranlarının ikisi de gerekli. Tahmini varsayılan değer kullanılmadı.",
+            "signals": signals,
+            "probabilities": {},
+            "top_scores": []
+        }
 
-    if one_x_two:
-        ph, pd, pa = one_x_two
-        direction = (ph - pa) / max(ph + pa, 1e-9)
-        share_home = max(0.18, min(0.82, 0.5 + 0.36 * direction))
-    else:
-        share_home = 0.5
+    lam_total = sum(l * w for l, w in lambdas) / sum(w for _, w in lambdas)
 
+    # Toplam gol beklentisini ev/deplasman yönüne ayırmak için 1X2'nin üç oranı gerekir.
+    # Eksikse taraf dağılımı üretmeyiz; veri uydurmayız.
+    if not one_x_two:
+        return {
+            "available": True,
+            "partial": True,
+            "expected_goals": round(lam_total, 2),
+            "home_xg_proxy": None,
+            "away_xg_proxy": None,
+            "probabilities": {},
+            "top_scores": [],
+            "signals": signals,
+            "note": "Toplam gol beklentisi Alt/Üst piyasasından türetildi. 1X2 tam olmadığı için ev/deplasman dağılımı ve skor modeli üretilmedi."
+        }
+
+    ph, pd, pa = one_x_two
+
+    # Sabit toplam lambda altında ev/deplasman payını, marjı temizlenmiş 1X2
+    # dağılımına en düşük kare hata ile uyduruyoruz. Keyfi katsayı kullanılmaz.
+    best = None
+    for i in range(501):
+        share = 0.08 + i * (0.84 / 500)
+        lh = max(0.01, lam_total * share)
+        la = max(0.01, lam_total - lh)
+        hp = dp = ap = 0.0
+        for hg in range(11):
+            p_h = poisson_pmf(hg, lh)
+            for ag in range(11):
+                p = p_h * poisson_pmf(ag, la)
+                if hg > ag: hp += p
+                elif hg == ag: dp += p
+                else: ap += p
+        mass = hp + dp + ap
+        hp, dp, ap = hp/mass, dp/mass, ap/mass
+        err = (hp-ph)**2 + (dp-pd)**2 + (ap-pa)**2
+        if best is None or err < best[0]:
+            best = (err, share)
+
+    share_home = best[1]
     lam_home = max(0.05, lam_total * share_home)
     lam_away = max(0.05, lam_total - lam_home)
 
@@ -258,6 +296,8 @@ def build_model(odds):
     top_scores = sorted(grid.items(), key=lambda x: x[1], reverse=True)[:5]
 
     return {
+        "available": True,
+        "partial": False,
         "expected_goals": round(lam_total, 2),
         "home_xg_proxy": round(lam_home, 2),
         "away_xg_proxy": round(lam_away, 2),
@@ -272,7 +312,7 @@ def build_model(odds):
 
 def build_consensus(history_stats, model):
     hist = history_stats or {}
-    mp = model.get("probabilities", {})
+    mp = model.get("probabilities", {}) if model else {}
     keys = [
         "MS 1", "MS X", "MS 2",
         "1,5 Üst", "1,5 Alt",
@@ -315,6 +355,79 @@ def build_consensus(history_stats, model):
     return out
 
 
+
+
+def market_probability_engine(odds):
+    groups = [
+        ("1X2", [("h", "MS 1"), ("d", "MS X"), ("a", "MS 2")]),
+        ("2,5 Gol", [("u25", "2,5 Alt"), ("o25", "2,5 Üst")]),
+        ("3,5 Gol", [("u35", "3,5 Alt"), ("o35", "3,5 Üst")]),
+        ("KG", [("btts", "KG Var"), ("nobtts", "KG Yok")]),
+        ("İY 1,5", [("iyu15", "İY 1,5 Alt"), ("iyo15", "İY 1,5 Üst")]),
+    ]
+    out=[]
+    for name, members in groups:
+        vals=[]
+        complete=True
+        for key,label in members:
+            v=odds.get(key)
+            if v is None:
+                complete=False; break
+            try: v=float(v)
+            except: complete=False; break
+            if v <= 1: complete=False; break
+            vals.append((key,label,v,1/v))
+        if not complete: continue
+        raw=sum(x[3] for x in vals)
+        out.append({
+            "group": name,
+            "overround_percent": round((raw-1)*100,2),
+            "book_percent": round(raw*100,2),
+            "selections":[{
+                "key":k,"label":label,"odds":v,
+                "raw_implied":round(inv*100,2),
+                "fair_percent":round(inv/raw*100,2),
+                "fair_odds":round(raw/inv,3)
+            } for k,label,v,inv in vals]
+        })
+    return out
+
+
+def count_matches(pool, q, tolerance):
+    searched=len(q)
+    minimum=max(2,(searched+1)//2)
+    counts=Counter()
+    qualified=0
+    for row in pool:
+        matched=0; compared=0
+        for key,target in q.items():
+            v=row.get(key)
+            if v is None: continue
+            try: v=float(v)
+            except: continue
+            compared += 1
+            if abs(v-target) <= tolerance: matched += 1
+        if compared >= 2:
+            counts[matched] += 1
+            if matched >= minimum: qualified += 1
+    return qualified, dict(sorted(counts.items()))
+
+
+def contradiction_flags(prob_engine):
+    fair={s["key"]:s["fair_percent"] for g in prob_engine for s in g["selections"]}
+    flags=[]
+    # These are descriptive cross-market tensions, not invented probabilities.
+    if fair.get("o25") is not None and fair.get("u35") is not None:
+        if fair["o25"] >= 58 and fair["u35"] >= 62:
+            flags.append("Piyasa 2–3 toplam gol bandında yoğunlaşıyor: 2,5 Üst ve 3,5 Alt birlikte güçlü fiyatlanmış.")
+    if fair.get("btts") is not None and fair.get("u25") is not None:
+        if fair["btts"] >= 58 and fair["u25"] >= 58:
+            flags.append("KG Var ile 2,5 Alt aynı anda yüksek adil olasılıkta; 1-1 ekseniyle uyumlu dar bir senaryo olabilir.")
+    if fair.get("nobtts") is not None and fair.get("o25") is not None:
+        if fair["nobtts"] >= 58 and fair["o25"] >= 58:
+            flags.append("KG Yok + 2,5 Üst birlikte güçlü; tek taraflı 3+ gol senaryosu fiyatlaması görülebilir.")
+    return flags
+
 # =========================================================
 # HOME / META
 # =========================================================
@@ -331,7 +444,7 @@ def meta():
         "history_rows": len(HISTORY),
         "completed_rows": completed,
         "markets": MARKETS,
-        "version": "3.0.0",
+        "version": "4.0.0",
         "rule": "Historical statistics use stored real match results; model probabilities are mathematical estimates derived from supplied market odds."
     }
 
@@ -427,7 +540,26 @@ def odds_scan(req: OddsReq):
     best_match_count = matches[0]["_matched_odds"] if matches else 0
     historical_stats = stats(matches)
     model = build_model(q)
+    probability_engine = market_probability_engine(q)
     consensus = build_consensus(historical_stats, model)
+
+    sensitivity=[]
+    for t in sorted(set([max(0.01, round(req.tolerance/2,3)), round(req.tolerance,3), round(req.tolerance*1.5,3), round(req.tolerance*2,3)])):
+        c, distribution = count_matches(pool, q, t)
+        sensitivity.append({"tolerance":t,"matches":c,"match_distribution":distribution})
+
+    funnel=[]
+    remaining=pool
+    for key,target in q.items():
+        before=len(remaining)
+        nxt=[]
+        for r in remaining:
+            v=r.get(key)
+            try: ok=v is not None and abs(float(v)-target)<=req.tolerance
+            except: ok=False
+            if ok: nxt.append(r)
+        funnel.append({"market":key,"before":before,"after":len(nxt),"eliminated":before-len(nxt)})
+        remaining=nxt
 
     if fallback:
         method = (
@@ -453,6 +585,10 @@ def odds_scan(req: OddsReq):
         "best_match_count": best_match_count,
         "stats": historical_stats,
         "model": model,
+        "probability_engine": probability_engine,
+        "contradictions": contradiction_flags(probability_engine),
+        "sensitivity": sensitivity,
+        "funnel": funnel,
         "consensus": consensus,
         "matches": returned_matches
     }

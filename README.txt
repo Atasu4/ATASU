@@ -17,3 +17,14 @@ Veri disiplini:
 Kod verisi import API:
 POST /api/codes/import
 {"rows":[{"code":"04737","league":"...","home":"...","away":"...","ht":"1-0","ft":"2-1"}]}
+
+ATASU Intelligence v4.0 (2026-09-21)
+- Premium mobile-first interface
+- No-vig Market Probability Engine (raw implied probability, overround, fair probability)
+- Historical similarity engine with auditable match counts
+- Tolerance sensitivity test
+- Sequential filter funnel
+- Cross-market relationship flags
+- Poisson total-goal calibration only when a complete O/U pair exists
+- Home/away goal split fitted numerically to margin-cleaned 1X2; no default/fabricated lambda
+- Missing required data returns VERI YOK instead of guessed values
