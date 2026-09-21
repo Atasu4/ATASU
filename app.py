@@ -268,16 +268,10 @@ def odds_scan(req: OddsReq):
     q = {}
 
     for key, value in req.odds.items():
-
-        if key not in MARKETS:
+        if key not in MARKETS or value is None:
             continue
-
-        if value is None:
-            continue
-
         try:
             q[key] = float(value)
-
         except (TypeError, ValueError):
             continue
 
@@ -293,89 +287,128 @@ def odds_scan(req: OddsReq):
     ]
 
     if req.league.strip():
-
         league_query = req.league.strip().casefold()
-
         pool = [
             r for r in pool
-            if league_query in
-            str(r.get("league", "")).casefold()
+            if league_query in str(r.get("league", "")).casefold()
         ]
 
-    matches = []
+    candidates = []
 
     for row in pool:
-
         differences = {}
-        valid = True
+        matched_differences = {}
+        compared = 0
+        matched_count = 0
 
         for key, target in q.items():
-
             historical = row.get(key)
 
             if historical is None:
-                valid = False
-                break
+                continue
 
             try:
                 historical = float(historical)
-
             except (TypeError, ValueError):
-                valid = False
-                break
+                continue
 
-            diff = abs(
-                historical - target
-            )
+            compared += 1
+            diff = abs(historical - target)
+            differences[key] = round(diff, 3)
 
-            if diff > req.tolerance:
-                valid = False
-                break
+            if diff <= req.tolerance:
+                matched_count += 1
+                matched_differences[key] = round(diff, 3)
 
-            differences[key] = round(
-                diff,
-                3
-            )
+        if compared < 2:
+            continue
 
-        if valid:
+        item = dict(row)
+        item["_matched_odds"] = matched_count
+        item["_compared_odds"] = compared
+        item["_match_ratio"] = round(
+            matched_count / compared * 100,
+            1
+        )
+        item["_differences"] = differences
+        item["_matched_differences"] = matched_differences
+        item["_total_difference"] = round(
+            sum(differences.values()),
+            3
+        )
 
-            item = dict(row)
+        candidates.append(item)
 
-            item["_differences"] = differences
+    searched_count = len(q)
 
-            item["_total_difference"] = round(
-                sum(differences.values()),
-                3
-            )
+    minimum_match_count = max(
+        2,
+        (searched_count + 1) // 2
+    )
 
-            matches.append(item)
+    matches = [
+        x for x in candidates
+        if x["_matched_odds"] >= minimum_match_count
+    ]
+
+    fallback = False
+
+    if not matches and candidates:
+        best_match_count = max(
+            x["_matched_odds"]
+            for x in candidates
+        )
+
+        if best_match_count > 0:
+            matches = [
+                x for x in candidates
+                if x["_matched_odds"] == best_match_count
+            ]
+            fallback = True
 
     matches.sort(
-        key=lambda x:
-        x.get("_total_difference", 999999)
+        key=lambda x: (
+            -x["_matched_odds"],
+            -x["_match_ratio"],
+            x["_total_difference"]
+        )
     )
 
     total_matches = len(matches)
-
     returned_matches = matches[:req.limit]
 
+    best_match_count = (
+        matches[0]["_matched_odds"]
+        if matches else 0
+    )
+
+    if fallback:
+        method = (
+            f"{searched_count} oran tarandı. "
+            f"En güçlü gerçek eşleşmeler gösteriliyor. "
+            f"En yüksek eşleşme: "
+            f"{best_match_count}/{searched_count}."
+        )
+    else:
+        method = (
+            f"{searched_count} oran tarandı. "
+            f"En az {minimum_match_count}/{searched_count} oranı "
+            f"±{req.tolerance} içinde eşleşen maçlar gösteriliyor. "
+            f"En güçlü eşleşme: "
+            f"{best_match_count}/{searched_count}."
+        )
+
     return {
-        "method":
-            f"Girilen {len(q)} desteklenen oranın tamamı "
-            f"ayrı ayrı ±{req.tolerance} tolerans içinde arandı.",
-
+        "method": method,
         "searched_odds": q,
-
+        "searched_count": searched_count,
         "tolerance": req.tolerance,
-
         "pool_size": len(pool),
-
         "matched": total_matches,
-
         "returned": len(returned_matches),
-
+        "minimum_match_count": minimum_match_count,
+        "best_match_count": best_match_count,
         "stats": stats(matches),
-
         "matches": returned_matches
     }
 
