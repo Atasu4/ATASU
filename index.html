@@ -113,6 +113,82 @@ async function scanBulkOdds(){
     alert(e.message);
   }
 }
-async function scanCode(){try{let j=await post('/api/code',{code:code.value,direction:dir.value,digits:Number(dig.value),league:cl.value});co.innerHTML=`<div class="card"><div class="k"><div><b>${j.matched}</b><small>eşleşme</small></div><div><b>${j.stored}</b><small>kayıtlı gerçek kod</small></div></div>${j.matched?stats(j.stats):'<p>Eşleşme yok.</p>'}</div>`}catch(e){alert(e.message)}}
-async function scanP6(){try{let q={};Object.keys(P).forEach(k=>q[k]=num('p_'+k));let j=await post('/api/plus6',q);po.innerHTML=`<div class="card"><div class="k"><div><b>%${j.compatibility_percent}</b><small>referans uyumu</small></div><div><b>${j.matched_rules}/5</b><small>tutan kriter</small></div></div>${j.rules.map(r=>`<div class="row"><span>${r.name}</span><b>${r.match?'UYDU':'UYMADI'}</b></div>`).join('')}<p>${j.note}</p></div>`}catch(e){alert(e.message)}}
+async function scanCode(){
+  try{
+    const code=document.getElementById('code').value.trim();
+    const league=document.getElementById('cleague').value.trim();
+    const direction=document.getElementById('direction').value;
+    const digits=Number(document.getElementById('digits').value);
+
+    if(!code){
+      throw new Error('5 haneli kod gir');
+    }
+
+    const j=await post('/api/code',{
+      code:code,
+      league:league,
+      direction:direction,
+      digits:digits
+    });
+
+    co.innerHTML=`
+      <div class="card">
+        <div class="k">
+          <div><b>${j.matched ?? 0}</b><small>eşleşen maç</small></div>
+          <div><b>${j.stored ?? 0}</b><small>kayıtlı kod</small></div>
+        </div>
+        ${j.stats ? stats(j.stats) : ''}
+      </div>
+
+      <div class="card">
+        <b>Tüm referanslar</b>
+        ${(j.matches || []).map(x=>`
+          <div class="row">
+            <span>
+              ${x.home || '-'} — ${x.away || '-'}<br>
+              <small>${x.league || '-'} · İY ${x.ht || '-'} · MS ${x.ft || '-'}</small>
+            </span>
+          </div>
+        `).join('')}
+      </div>`;
+  }catch(e){
+    alert(e.message);
+  }
+}
+
+async function scanP6(){
+  try{
+    const q={};
+
+    document.querySelectorAll('#p input').forEach(el=>{
+      if(el.id && el.id.startsWith('p_')){
+        const v=el.value.trim().replace(',','.');
+        if(v!=='' && Number.isFinite(Number(v))){
+          q[el.id.substring(2)]=Number(v);
+        }
+      }
+    });
+
+    const j=await post('/api/plus6',q);
+
+    po.innerHTML=`
+      <div class="card">
+        ${j.stats ? stats(j.stats) : ''}
+      </div>
+
+      <div class="card">
+        <b>Tüm referanslar</b>
+        ${(j.matches || []).map(x=>`
+          <div class="row">
+            <span>
+              ${x.home || '-'} — ${x.away || '-'}<br>
+              <small>${x.league || '-'} · İY ${x.ht || '-'} · MS ${x.ft || '-'}</small>
+            </span>
+          </div>
+        `).join('')}
+      </div>`;
+  }catch(e){
+    alert(e.message);
+  }
+}
 </script></body></html>
