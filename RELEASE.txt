@@ -1,9 +1,5 @@
-ATASU 4.5.0 FINAL
-- Mevcut ATASU MODEL ve BANKO motoru korunur.
-- BANKO sinyalleri ayrı BANKO KAYITLARI bölümünde tutulur; tarih kaydedilmez.
-- EXCEL ORAN tamamen ayrı modüldür.
-- EXCEL ORAN tolerans kullanmaz; sayısal birebir oran eşleşmesi yapar.
-- MS / ALT-ÜST / KG / İY ayrı kategori eşleşmeleri ve TÜM ORANLAR KOMBİNE sonucu gösterilir.
-- Eşleşen gerçek maçların İY ve MS skorları listelenir.
-- Korner geçmiş veri kaynağında yoksa VERİ YOK gösterilir; veri uydurulmaz.
-- 11.763 geçmiş kayıt / 11.263 sonuçlu kayıt ile test edildi.
+ATASU 4.6.0 — IMAGE INPUT + ATASU AKIL
+Mevcut 4.5.0 özellikleri korunmuştur.
+Yeni: Çoklu ekran görüntüsünden tarayıcı tarafında OCR ile oran metni okuma.
+Yeni: BANKO + geçmiş eşleşme + marjsız piyasa karşılaştırmasını birleştiren ATASU AKIL yorum kartı.
+Not: Görsel okuma Tesseract.js CDN kullanır; ilk kullanımda internet bağlantısı gerekir.
