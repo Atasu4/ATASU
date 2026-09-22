@@ -1,8 +1,2 @@
-ATASU 4.9.0 — LINK DATA ENGINE
-
-- OCR/görsel ana giriş kaldırıldı; maç URL girişi eklendi.
-- /api/match-link erişilebilir maç sayfalarındaki gerçek metin, market satırları ve HTML tablolarını okur.
-- Linkten okunan tek kaynak ATASU MODEL + EXCEL ORAN + +6 GOL motorlarına otomatik dağıtılır.
-- BANKO, geçmiş eşleştirme, birebir Excel oran, +6 Gol ve analiz geçmişi korunur.
-- Kaynakta okunmayan lig sırası/istatistik/oran uydurulmaz.
-- Versiyon 4.9.0.
+ATASU 4.8.2 FINAL CLEAN
+Root-level deployment package. Python compile and local HTTP smoke test passed.
