@@ -27,24 +27,30 @@ function tab(id,b){document.querySelectorAll('.panel').forEach(x=>x.classList.re
 async function post(url,data){let r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});let j=await r.json();if(!r.ok)throw new Error(j.detail||'Sunucu hatası');return j}
 function norm(s){return s.toLocaleLowerCase('tr-TR').replace(/[()]/g,'').replace(/\s+/g,' ').trim()}
 async function readShots(files){let st=document.getElementById('ocrstate'),box=document.getElementById('bulk');if(!files||!files.length)return;if(!window.Tesseract){st.textContent='Görsel okuma modülü yüklenemedi. İnternet bağlantısını kontrol et.';return}let all=[];for(let i=0;i<files.length;i++){st.textContent=`Görsel okunuyor ${i+1}/${files.length}…`;try{let r=await Tesseract.recognize(files[i],'tur+eng',{logger:m=>{if(m.status==='recognizing text')st.textContent=`Görsel ${i+1}/${files.length} okunuyor · %${Math.round((m.progress||0)*100)}`}});if(r.data&&r.data.text)all.push(r.data.text)}catch(e){st.textContent='Görsel okunamadı: '+e.message;return}}box.value=(box.value.trim()?box.value.trim()+'\n':'')+all.join('\n');st.textContent=`${files.length} görsel okundu. Metni kontrol edip ANALİZİ BAŞLAT'a bas.`}
-function val(s){let x=Number(String(s).replace(',','.'));return Number.isFinite(x)&&x>1?x:null}
-function parse(sourceId='bulk'){let lines=document.getElementById(sourceId).value.replace(/\r/g,'').split('\n').map(x=>x.trim()).filter(Boolean);if(!lines.length)throw new Error('Önce oran bloğunu yapıştır.');let odds={},p={o25:null,o35:null,o45:null,btts:null,iy05:null,nofirst:null},section='';
- const sectionOf=s=>{let x=norm(s).replace(/\b\d{5,8}\b/g,'').trim(); if(x==='maç sonucu')return'ms';if(x==='2,5 alt/üst')return'ou25';if(x==='3,5 alt/üst')return'ou35';if(x==='4,5 alt/üst')return'ou45';if(x==='karşılıklı gol')return'kg';if(x==='1. yarı 1,5 alt/üst'||x==='1.yarı 1,5 alt/üst')return'iy15';if(x==='1. yarı 0,5 alt/üst'||x==='1.yarı 0,5 alt/üst')return'iy05';if(x==='ilk gol')return'ilkgol';if(x==='toplam gol aralığı')return'aralik';return null};
- for(let i=0;i<lines.length;i++){let sec=sectionOf(lines[i]);if(sec){section=sec;continue} let label=lines[i], v=null;
-   let inline=label.match(/^(.*?)[\s:]+(\d+[.,]\d+)$/); if(inline){label=inline[1].trim();v=val(inline[2])} else if(i+1<lines.length){v=val(lines[i+1]);if(v!==null)i++} if(v===null)continue; let l=norm(label);
-   if(section==='ms'){if(l==='1')odds.h=v;else if(l==='x')odds.d=v;else if(l==='2')odds.a=v}
-   else if(section==='ou25'){if(l==='alt')odds.u25=v;else if(l==='üst'){odds.o25=v;p.o25=v}}
-   else if(section==='ou35'){if(l==='alt')odds.u35=v;else if(l==='üst'){odds.o35=v;p.o35=v}}
-   else if(section==='ou45'&&l==='üst')p.o45=v;
-   else if(section==='kg'){if(l==='var'){odds.btts=v;p.btts=v}else if(l==='yok')odds.nobtts=v}
-   else if(section==='iy15'){if(l==='alt')odds.iyu15=v;else if(l==='üst')odds.iyo15=v}
-   else if(section==='iy05'&&l==='üst')p.iy05=v;
-   else if(section==='ilkgol'&&l==='olmaz')p.nofirst=v;
-   else if(section==='aralik'&&l==='6+ gol')odds.g6=v;
+function val(s){let x=Number(String(s).replace(/\s/g,'').replace(',','.'));return Number.isFinite(x)&&x>1&&x<1000?x:null}
+function cleanOCRText(s){return String(s||'').replace(/\r/g,'').replace(/[|]/g,' ').replace(/[–—]/g,'-').replace(/(\d)\s*[,.]\s*(\d)/g,'$1.$2').replace(/\bK[G6]\s*V[aA][rR]\b/gi,'KG Var').replace(/\bK[G6]\s*Y[oO][kK]\b/gi,'KG Yok').replace(/\bU[SŞ][Tt]\b/gi,'Üst').replace(/\bA[Ll][Tt]\b/gi,'Alt')}
+function parse(sourceId='bulk'){
+ let raw=cleanOCRText(document.getElementById(sourceId).value), lines=raw.split('\n').map(x=>x.trim()).filter(Boolean);if(!lines.length)throw new Error('Önce oran bloğunu yapıştır.');let odds={},p={o25:null,o35:null,o45:null,btts:null,iy05:null,nofirst:null},section='';
+ const sectionOf=s=>{let x=norm(s).replace(/\b\d{5,8}\b/g,'').trim();if(/ma[cç]\s*sonucu/.test(x))return'ms';if(/2[.,]?5\s*alt\s*[\/]?\s*[üu]st/.test(x))return'ou25';if(/3[.,]?5\s*alt\s*[\/]?\s*[üu]st/.test(x))return'ou35';if(/4[.,]?5\s*alt\s*[\/]?\s*[üu]st/.test(x))return'ou45';if(/kar[sş][ıi]l[ıi]kl[ıi]\s*gol|kg\s*(var|yok)/.test(x))return'kg';if(/1\.?\s*yar[ıi].*1[.,]?5.*alt.*[üu]st/.test(x))return'iy15';if(/1\.?\s*yar[ıi].*0[.,]?5.*alt.*[üu]st/.test(x))return'iy05';if(/ilk\s*gol/.test(x))return'ilkgol';if(/toplam\s*gol\s*aral/.test(x))return'aralik';return null};
+ // Satır tabanlı okuma: başlık, etiket ve oran ayrı satırlarda olsa da çalışır.
+ for(let i=0;i<lines.length;i++){let sec=sectionOf(lines[i]);if(sec){section=sec;continue}let label=lines[i],v=null;let inline=label.match(/^(.*?)[\s:]+(\d{1,3}[.,]\d{1,3})\s*$/);if(inline){label=inline[1].trim();v=val(inline[2])}else if(i+1<lines.length){v=val(lines[i+1]);if(v!==null)i++}if(v===null)continue;let l=norm(label);
+  if(section==='ms'){if(/^(1|ms\s*1)$/.test(l))odds.h=v;else if(/^(x|ms\s*x)$/.test(l))odds.d=v;else if(/^(2|ms\s*2)$/.test(l))odds.a=v}
+  else if(section==='ou25'){if(/alt/.test(l))odds.u25=v;else if(/[üu]st/.test(l)){odds.o25=v;p.o25=v}}
+  else if(section==='ou35'){if(/alt/.test(l))odds.u35=v;else if(/[üu]st/.test(l)){odds.o35=v;p.o35=v}}
+  else if(section==='ou45'&&/[üu]st/.test(l))p.o45=v;else if(section==='kg'){if(/var/.test(l)){odds.btts=v;p.btts=v}else if(/yok/.test(l))odds.nobtts=v}
+  else if(section==='iy15'){if(/alt/.test(l))odds.iyu15=v;else if(/[üu]st/.test(l))odds.iyo15=v}else if(section==='iy05'&&/[üu]st/.test(l))p.iy05=v;else if(section==='ilkgol'&&/olmaz/.test(l))p.nofirst=v;else if(section==='aralik'&&/6\s*\+/.test(l))odds.g6=v;
  }
- return{odds,p};}
-function pct(v){return v==null?'—':'%'+Number(v).toFixed(1)}
-function card(title,html){let c=title==='KARAR MERKEZİ'?'card decision':'card';return `<div class="${c}"><div class="title">${title}</div>${html}</div>`}
+ // OCR çoğu sitede marketi tek satıra sıkıştırır. Her market başlığının yakın çevresini ayrıca tara.
+ const flat=raw.replace(/\n/g,' ').replace(/\s+/g,' '), num='(\\d{1,3}[\\.,]\\d{1,3})';
+ const take=(re,key,pk)=>{let m=flat.match(re);if(m){let v=val(m[1]);if(v!==null){odds[key]=v;if(pk)p[pk]=v}}};
+ take(new RegExp('(?:MS\\s*)?1\\s*[:=-]?\\s*'+num+'(?=\\s+(?:X|MS\\s*X)\\b)','i'),'h');take(new RegExp('(?:MS\\s*)?X\\s*[:=-]?\\s*'+num+'(?=\\s+(?:2|MS\\s*2)\\b)','i'),'d');take(new RegExp('(?:MS\\s*)?2\\s*[:=-]?\\s*'+num,'i'),'a');
+ const block=(head,next='')=>{let i=flat.toLocaleLowerCase('tr-TR').search(head);if(i<0)return'';let z=flat.slice(i,i+220);return z};
+ let b=block(/2[.,]?5\s*alt\s*\/?\s*[üu]st/i);if(b){let a=b.match(new RegExp('Alt\\s*[:=-]?\\s*'+num,'i')),u=b.match(new RegExp('[ÜU]st\\s*[:=-]?\\s*'+num,'i'));if(a)odds.u25=val(a[1]);if(u){odds.o25=val(u[1]);p.o25=odds.o25}}
+ b=block(/3[.,]?5\s*alt\s*\/?\s*[üu]st/i);if(b){let a=b.match(new RegExp('Alt\\s*[:=-]?\\s*'+num,'i')),u=b.match(new RegExp('[ÜU]st\\s*[:=-]?\\s*'+num,'i'));if(a)odds.u35=val(a[1]);if(u){odds.o35=val(u[1]);p.o35=odds.o35}}
+ b=block(/kar[sş][ıi]l[ıi]kl[ıi]\s*gol|kg\s*var/i);if(b){let y=b.match(new RegExp('(?:KG\\s*)?Var\\s*[:=-]?\\s*'+num,'i')),n=b.match(new RegExp('(?:KG\\s*)?Yok\\s*[:=-]?\\s*'+num,'i'));if(y){odds.btts=val(y[1]);p.btts=odds.btts}if(n)odds.nobtts=val(n[1])}
+ // Doğrudan etiketli yapıştırmalar: "2,5 Üst 1.85", "KG Var 1.72" vb.
+ [['u25','2[.,]?5\\s*Alt'],['o25','2[.,]?5\\s*[ÜU]st'],['u35','3[.,]?5\\s*Alt'],['o35','3[.,]?5\\s*[ÜU]st'],['btts','KG\\s*Var'],['nobtts','KG\\s*Yok'],['iyu15','(?:İY|IY)\\s*1[.,]?5\\s*Alt'],['iyo15','(?:İY|IY)\\s*1[.,]?5\\s*[ÜU]st'],['g6','6\\+\\s*Gol']].forEach(([k,l])=>{let m=flat.match(new RegExp(l+'\\s*[:=-]?\\s*'+num,'i'));if(m&&!odds[k])odds[k]=val(m[1])});
+ if(odds.o25)p.o25=odds.o25;if(odds.o35)p.o35=odds.o35;if(odds.btts)p.btts=odds.btts;return{odds,p};}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function diffTags(x){let d=x._differences||{};return Object.entries(d).sort((a,b)=>a[1]-b[1]).map(([k,v])=>`<span class="tag">${esc(N[k]||k)} Δ${Number(v).toFixed(3)}</span>`).join('')||'<span class="sub">Oran fark detayı yok.</span>'}
 function matchBlock(x){return `<details class="match"><summary><b>${esc(x.home)} – ${esc(x.away)} · ${esc(x.ft)}</b><small>${esc(x.date||'')} · ${esc(x.league||'')} · ${x._matched_odds??'—'}/${x._compared_odds??'—'} oran eşleşti</small></summary><div class="detail">${diffTags(x)}${x.ht?`<div class="sub" style="margin-top:6px">İY ${esc(x.ht)} · MS ${esc(x.ft)}</div>`:''}</div></details>`}

@@ -158,7 +158,7 @@ class OddsReq(BaseModel):
 def root(): return FileResponse(ROOT/'index.html')
 @app.get('/api/meta')
 def meta():
- return {'history_rows':len(HISTORY),'completed_rows':sum(score(x.get('ft')) is not None for x in HISTORY),'markets':MARKETS,'version':'4.7.0','rule':'Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır. Türetilmiş olasılıklar açıkça matematiksel olarak etiketlenir.'}
+ return {'history_rows':len(HISTORY),'completed_rows':sum(score(x.get('ft')) is not None for x in HISTORY),'markets':MARKETS,'version':'4.7.2','rule':'Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır. Türetilmiş olasılıklar açıkça matematiksel olarak etiketlenir.'}
 
 @app.post('/api/odds')
 def odds_scan(req:OddsReq):
