@@ -2,6 +2,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from urllib.request import Request, urlopen
+from urllib.parse import urlparse
+from html import unescape
 from pathlib import Path
 from collections import Counter
 import json, re, math
@@ -12,7 +15,7 @@ HISTORY=json.loads(HISTORY_FILE.read_text(encoding='utf-8'))
 MARKETS=['h','d','a','u25','o25','btts','nobtts','u35','o35','iyu15','iyo15','g6']
 NAMES={'h':'MS 1','d':'MS X','a':'MS 2','u25':'2,5 Alt','o25':'2,5 Üst','btts':'KG Var','nobtts':'KG Yok','u35':'3,5 Alt','o35':'3,5 Üst','iyu15':'İY 1,5 Alt','iyo15':'İY 1,5 Üst','g6':'6+ Gol'}
 GROUPS=[('1X2',['h','d','a']),('2,5 Alt/Üst',['u25','o25']),('3,5 Alt/Üst',['u35','o35']),('Karşılıklı Gol',['btts','nobtts']),('İY 1,5 Alt/Üst',['iyu15','iyo15'])]
-app=FastAPI(title='ATASU Intelligence',version='4.8.2')
+app=FastAPI(title='ATASU Intelligence',version='4.9.1')
 if (ROOT/'static').exists(): app.mount('/static',StaticFiles(directory=ROOT/'static'),name='static')
 
 def score(v):
@@ -158,7 +161,50 @@ class OddsReq(BaseModel):
 def root(): return FileResponse(ROOT/'index.html')
 @app.get('/api/meta')
 def meta():
- return {'history_rows':len(HISTORY),'completed_rows':sum(score(x.get('ft')) is not None for x in HISTORY),'markets':MARKETS,'version':'4.8.2','rule':'Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır. Türetilmiş olasılıklar açıkça matematiksel olarak etiketlenir.'}
+ return {'history_rows':len(HISTORY),'completed_rows':sum(score(x.get('ft')) is not None for x in HISTORY),'markets':MARKETS,'version':'4.9.1','rule':'Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır. Türetilmiş olasılıklar açıkça matematiksel olarak etiketlenir.'}
+
+
+class LinkReq(BaseModel):
+ url:str
+
+def _html_to_text(raw:str):
+ raw=re.sub(r'(?is)<script.*?</script>|<style.*?</style>',' ',raw)
+ raw=re.sub(r'(?i)<br\s*/?>|</(?:p|div|tr|li|h[1-6])>','\n',raw)
+ raw=re.sub(r'(?s)<[^>]+>',' ',raw)
+ raw=unescape(raw).replace('\xa0',' ')
+ raw=re.sub(r'[ \t]+',' ',raw)
+ raw=re.sub(r'\n\s*\n+','\n',raw)
+ return raw.strip()
+
+@app.post('/api/match-link')
+def match_link(req:LinkReq):
+ url=req.url.strip()
+ u=urlparse(url)
+ if u.scheme not in ('http','https') or not u.netloc:
+  raise HTTPException(400,'Geçerli bir maç linki gir.')
+ host=u.netloc.lower()
+ allowed=('mackolik.com','arsiv.mackolik.com','www.mackolik.com')
+ if not any(host==x or host.endswith('.'+x) for x in allowed):
+  raise HTTPException(400,'Şimdilik Maçkolik maç linkleri destekleniyor.')
+ try:
+  r=Request(url,headers={'User-Agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1','Accept-Language':'tr-TR,tr;q=0.9,en;q=0.7'})
+  with urlopen(r,timeout=15) as f:
+   data=f.read(2500000)
+   ctype=f.headers.get_content_charset() or 'utf-8'
+  try: html=data.decode(ctype,errors='replace')
+  except: html=data.decode('utf-8',errors='replace')
+  text=_html_to_text(html)
+  title=''; m=re.search(r'(?is)<title[^>]*>(.*?)</title>',html)
+  if m: title=_html_to_text(m.group(1))
+  if len(text)<80: raise ValueError('Sayfa içeriği alınamadı')
+  return {'ok':True,'url':url,'title':title,'text':text[:120000],'chars':len(text),'source':'Mackolik'}
+ except HTTPException: raise
+ except Exception as e:
+  raise HTTPException(502,'Maç linki sunucudan okunamadı. Kaynak erişimi engelliyor olabilir: '+str(e)[:120])
+
+@app.get('/api/selftest')
+def selftest():
+ return {'ok':True,'version':'4.9.1','history_rows':len(HISTORY),'completed_rows':sum(score(x.get('ft')) is not None for x in HISTORY),'endpoints':['/api/match-link','/api/odds','/api/exact-odds','/api/plus6']}
 
 @app.post('/api/odds')
 def odds_scan(req:OddsReq):

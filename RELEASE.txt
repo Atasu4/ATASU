@@ -1,2 +1,5 @@
-ATASU 4.8.2 FINAL CLEAN
-Root-level deployment package. Python compile and local HTTP smoke test passed.
+ATASU 4.9.1 LINK DATA FIX
+- OCR ana giriş kaldırıldı.
+- Maçkolik link okuma eklendi.
+- Mevcut ATASU / Excel Oran / +6 Gol / BANKO motorları korundu.
+- /api/selftest eklendi.
