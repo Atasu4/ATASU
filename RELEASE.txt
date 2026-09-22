@@ -1,5 +1,6 @@
-ATASU 4.7.0 — AI YORUM + SADE ANA SAYFA
-- Ana sayfa hızlı analiz odaklı sadeleştirildi.
-- Ayarlar, BANKO kayıtları ve analiz geçmişi açılır bölümlere taşındı.
-- OCR metnindeki istatistik açıklamalarını yapılandırıp sayısal motorla birlikte yorumlayan ATASU AI katmanı eklendi.
-- İstatistik metni tek başına BANKO üretmez; BANKO mevcut doğrulanmış sayısal filtreden gelir.
+ATASU 4.8.1 — TEK GİRİŞ FIX
+- ENGINE sürüm etiketi 4.8.1 olarak düzeltildi.
+- Tek görsel/metin girişi ATASU MODEL, EXCEL ORAN ve +6 GOL bölümlerince ortak kullanılır.
+- OCR okunan veriyi ortak giriş alanına aktarır.
+- card JavaScript hatası giderilmiş yapı korunur.
+- Eski özellikler ve history.json korunmuştur.

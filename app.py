@@ -12,7 +12,7 @@ HISTORY=json.loads(HISTORY_FILE.read_text(encoding='utf-8'))
 MARKETS=['h','d','a','u25','o25','btts','nobtts','u35','o35','iyu15','iyo15','g6']
 NAMES={'h':'MS 1','d':'MS X','a':'MS 2','u25':'2,5 Alt','o25':'2,5 Üst','btts':'KG Var','nobtts':'KG Yok','u35':'3,5 Alt','o35':'3,5 Üst','iyu15':'İY 1,5 Alt','iyo15':'İY 1,5 Üst','g6':'6+ Gol'}
 GROUPS=[('1X2',['h','d','a']),('2,5 Alt/Üst',['u25','o25']),('3,5 Alt/Üst',['u35','o35']),('Karşılıklı Gol',['btts','nobtts']),('İY 1,5 Alt/Üst',['iyu15','iyo15'])]
-app=FastAPI(title='ATASU Intelligence',version='4.7.0')
+app=FastAPI(title='ATASU Intelligence',version='4.8.1')
 if (ROOT/'static').exists(): app.mount('/static',StaticFiles(directory=ROOT/'static'),name='static')
 
 def score(v):
@@ -158,7 +158,7 @@ class OddsReq(BaseModel):
 def root(): return FileResponse(ROOT/'index.html')
 @app.get('/api/meta')
 def meta():
- return {'history_rows':len(HISTORY),'completed_rows':sum(score(x.get('ft')) is not None for x in HISTORY),'markets':MARKETS,'version':'4.7.2','rule':'Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır. Türetilmiş olasılıklar açıkça matematiksel olarak etiketlenir.'}
+ return {'history_rows':len(HISTORY),'completed_rows':sum(score(x.get('ft')) is not None for x in HISTORY),'markets':MARKETS,'version':'4.8.1','rule':'Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır. Türetilmiş olasılıklar açıkça matematiksel olarak etiketlenir.'}
 
 @app.post('/api/odds')
 def odds_scan(req:OddsReq):
