@@ -4,7 +4,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pathlib import Path
 from collections import Counter
-import json, re, math
+import json, re, math, urllib.request, urllib.parse
+from bs4 import BeautifulSoup
 
 ROOT=Path(__file__).parent; HISTORY_FILE=ROOT/'data'/'history.json'
 if not HISTORY_FILE.exists(): raise RuntimeError('data/history.json bulunamadı.')
@@ -12,7 +13,7 @@ HISTORY=json.loads(HISTORY_FILE.read_text(encoding='utf-8'))
 MARKETS=['h','d','a','u25','o25','btts','nobtts','u35','o35','iyu15','iyo15','g6']
 NAMES={'h':'MS 1','d':'MS X','a':'MS 2','u25':'2,5 Alt','o25':'2,5 Üst','btts':'KG Var','nobtts':'KG Yok','u35':'3,5 Alt','o35':'3,5 Üst','iyu15':'İY 1,5 Alt','iyo15':'İY 1,5 Üst','g6':'6+ Gol'}
 GROUPS=[('1X2',['h','d','a']),('2,5 Alt/Üst',['u25','o25']),('3,5 Alt/Üst',['u35','o35']),('Karşılıklı Gol',['btts','nobtts']),('İY 1,5 Alt/Üst',['iyu15','iyo15'])]
-app=FastAPI(title='ATASU Intelligence',version='4.8.1')
+app=FastAPI(title='ATASU Intelligence',version='4.9.0')
 if (ROOT/'static').exists(): app.mount('/static',StaticFiles(directory=ROOT/'static'),name='static')
 
 def score(v):
@@ -158,7 +159,64 @@ class OddsReq(BaseModel):
 def root(): return FileResponse(ROOT/'index.html')
 @app.get('/api/meta')
 def meta():
- return {'history_rows':len(HISTORY),'completed_rows':sum(score(x.get('ft')) is not None for x in HISTORY),'markets':MARKETS,'version':'4.8.1','rule':'Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır. Türetilmiş olasılıklar açıkça matematiksel olarak etiketlenir.'}
+ return {'history_rows':len(HISTORY),'completed_rows':sum(score(x.get('ft')) is not None for x in HISTORY),'markets':MARKETS,'version':'4.9.0','rule':'Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır. Türetilmiş olasılıklar açıkça matematiksel olarak etiketlenir.'}
+
+
+class LinkReq(BaseModel):
+ url:str
+
+def _clean_text(x):
+ return re.sub(r'\s+',' ',str(x or '')).strip()
+
+def _market_lines(text):
+ # Preserve only source text; no invented odds. Frontend's existing parser reads these labels.
+ labels=[r'MS\s*1',r'MS\s*[Xx]',r'MS\s*2',r'2[,.]5\s*Alt',r'2[,.]5\s*[ÜUu]st',r'3[,.]5\s*Alt',r'3[,.]5\s*[ÜUu]st',r'KG\s*Var',r'KG\s*Yok',r'[İI]Y\s*1[,.]5\s*Alt',r'[İI]Y\s*1[,.]5\s*[ÜUu]st']
+ out=[]
+ for lab in labels:
+  m=re.search(r'('+lab+r').{0,80}?([1-9]\d?[,.]\d{1,3})',text,re.I)
+  if m: out.append(f'{m.group(1)} {m.group(2)}')
+ return out
+
+@app.post('/api/match-link')
+def match_link(req:LinkReq):
+ url=req.url.strip()
+ try:
+  u=urllib.parse.urlparse(url)
+ except Exception:
+  raise HTTPException(400,'Geçersiz bağlantı.')
+ if u.scheme not in ('http','https') or not u.netloc:
+  raise HTTPException(400,'Geçerli bir http/https maç bağlantısı gir.')
+ # Intended for public match/stat pages. Do not allow local/private targets.
+ host=(u.hostname or '').lower()
+ if host in {'localhost','127.0.0.1','0.0.0.0','::1'} or host.endswith('.local'):
+  raise HTTPException(400,'Yerel ağ adresleri desteklenmiyor.')
+ try:
+  rq=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1','Accept-Language':'tr-TR,tr;q=0.9,en;q=0.7'})
+  with urllib.request.urlopen(rq,timeout=12) as r:
+   raw=r.read(2_500_000); ctype=r.headers.get('content-type','')
+  if 'html' not in ctype.lower() and b'<html' not in raw[:1000].lower(): raise ValueError('HTML değil')
+  html=raw.decode('utf-8','replace')
+  if html.count('�')>20:
+   html=raw.decode('windows-1254','replace')
+ except Exception as e:
+  raise HTTPException(502,f'Bağlantı okunamadı: {type(e).__name__}. Site dış erişimi engelliyor olabilir.')
+ soup=BeautifulSoup(html,'html.parser')
+ for x in soup(['script','style','noscript','svg']): x.decompose()
+ title=_clean_text(soup.title.get_text(' ',strip=True) if soup.title else '')
+ headings=[_clean_text(x.get_text(' ',strip=True)) for x in soup.find_all(['h1','h2','h3'])][:20]
+ text='\n'.join(_clean_text(x) for x in soup.stripped_strings if _clean_text(x))
+ market=_market_lines(text)
+ # Extract real HTML tables as compact rows for standings/form/stat context.
+ tables=[]
+ for ti,t in enumerate(soup.find_all('table')[:12]):
+  rows=[]
+  for tr in t.find_all('tr')[:30]:
+   cells=[_clean_text(c.get_text(' ',strip=True)) for c in tr.find_all(['th','td'])]
+   if cells: rows.append(cells[:12])
+  if rows: tables.append({'index':ti+1,'rows':rows})
+ # Keep a bounded source excerpt for evidence/debugging.
+ excerpt=text[:30000]
+ return {'url':url,'title':title,'headings':headings,'market_lines':market,'source_text':excerpt,'tables':tables,'table_count':len(tables),'note':'Yalnızca bağlantıdan gerçekten okunabilen içerik döndürüldü. Eksik alan uydurulmaz.'}
 
 @app.post('/api/odds')
 def odds_scan(req:OddsReq):
