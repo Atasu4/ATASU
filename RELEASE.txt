@@ -1,5 +1,5 @@
-ATASU 4.6.0 — IMAGE INPUT + ATASU AKIL
-Mevcut 4.5.0 özellikleri korunmuştur.
-Yeni: Çoklu ekran görüntüsünden tarayıcı tarafında OCR ile oran metni okuma.
-Yeni: BANKO + geçmiş eşleşme + marjsız piyasa karşılaştırmasını birleştiren ATASU AKIL yorum kartı.
-Not: Görsel okuma Tesseract.js CDN kullanır; ilk kullanımda internet bağlantısı gerekir.
+ATASU 4.7.0 — AI YORUM + SADE ANA SAYFA
+- Ana sayfa hızlı analiz odaklı sadeleştirildi.
+- Ayarlar, BANKO kayıtları ve analiz geçmişi açılır bölümlere taşındı.
+- OCR metnindeki istatistik açıklamalarını yapılandırıp sayısal motorla birlikte yorumlayan ATASU AI katmanı eklendi.
+- İstatistik metni tek başına BANKO üretmez; BANKO mevcut doğrulanmış sayısal filtreden gelir.
