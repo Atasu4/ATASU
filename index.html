@@ -246,6 +246,7 @@ async function pickBulletin(m){
   if(!m || !m.mac_id) return alert('mac_id yok');
   window._bultenSecim = m;
   $('lhQ').value = (m.home||'')+' - '+(m.away||'');
+  if(m.league) $('league').value = m.league;
   $('outModel').innerHTML = '<p class="mu">Oranlar alınıyor… '+esc($('lhQ').value)+'</p>';
   try{
     const r = await fetch('/api/from-mac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mac_id:String(m.mac_id), title:$('lhQ').value})});
@@ -318,9 +319,38 @@ async function analyzeText(text, title){
   html += '<div class="k"><span>2,5 üst geldi</span><b>'+(s['2,5 Üst']!=null?s['2,5 Üst']+'%':'—')+'</b></div>';
   html += '<div class="k"><span>KG geldi</span><b>'+(s['KG Var']!=null?s['KG Var']+'%':'—')+'</b></div>';
   html += '<div class="k"><span>2. yarı gol</span><b>'+(s['2.Y 1+ Gol']!=null?s['2.Y 1+ Gol']+'%':'—')+'</b></div></div>';
-  html += '<div class="mu">Okunan oran</div>'+chips(odds);
+  html += '<div class="mu">Okunan oran (yalnızca açık iddaa)</div>'+chips(odds);
+  const st = brief.standing||{};
+  if(st.ok){
+    html += '<div class="verdict"><div class="kicker">Maçkolik puan durumu</div>';
+    html += '<p class="v-sub">'+esc(st.season_label||'')+' · sezon '+esc(st.season_id||'')+'</p>';
+    function rowLine(r, tag){
+      if(!r) return '';
+      const fm = (r.form&&r.form.all)? ' · form '+r.form.all : '';
+      const uo = r.uo && r.uo.n!=null ? ' · 2.5Ü '+r.uo.ust+'/'+r.uo.n : '';
+      const kg = r.kg && r.kg.n!=null ? ' · KG '+r.kg.var+'/'+r.kg.n : '';
+      return tag+' '+r.pos+'. '+r.name+' '+r.played+'O '+r.w+'-'+r.d+'-'+r.l+' '+r.gf+'-'+r.ga+' '+r.pts+'p'+fm+uo+kg;
+    }
+    const an = st.analysis||{};
+    let extra = '';
+    if(an.exp_total!=null) extra += 'λ ev '+an.exp_home+' / dep '+an.exp_away+' = '+an.exp_total+'\n';
+    if(an.combo_o25!=null) extra += 'taraf 2.5Ü %'+an.combo_o25+(an.combo_kg!=null?' · taraf KG %'+an.combo_kg:'')+'\n';
+    if(an.home_opta) extra += 'ev şut '+an.home_opta.shots_pg+' isabet '+an.home_opta.sot_pg+' TSO %'+an.home_opta.possession+' CS '+an.home_opta.clean_sheets+'\n';
+    if(an.away_opta) extra += 'dep şut '+an.away_opta.shots_pg+' isabet '+an.away_opta.sot_pg+' TSO %'+an.away_opta.possession+' CS '+an.away_opta.clean_sheets+'\n';
+    if(an.flags&&an.flags.length) extra += 'okuma: '+an.flags.join(' · ');
+    html += '<p class="yorum">'+esc(rowLine(st.home_row,'Ev'))+'\n'+esc(rowLine(st.away_row,'Dep'))+(extra?'\n'+esc(extra.trim()):'')+'</p></div>';
+  } else if(st.note){
+    html += '<p class="mu">Puan durumu: '+esc(st.note)+'</p>';
+  }
+  const picks = brief.open_picks||[];
+  if(picks.length){
+    html += '<div class="mu">Açık piyasa sıralaması (kapalı hatta bakılmaz)</div>';
+    picks.slice(0,6).forEach(p=>{
+      html += '<div class="chip">'+esc(p.name)+' '+p.odds+(p.ev!=null?' · EV '+p.ev:'')+(p.stand_note?' · '+esc(p.stand_note):'')+'</div>';
+    });
+  }
   if(parts.tercih){
-    html += '<div class="tercih"><div class="kicker">Tercih</div><p>'+esc(parts.tercih)+'</p></div>';
+    html += '<div class="tercih"><div class="kicker">Tercih · yalnızca açık iddaa</div><p>'+esc(parts.tercih)+'</p></div>';
   }
   $('outModel').innerHTML = html;
 

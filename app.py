@@ -35,7 +35,15 @@ GROUPS = [
     ("Karşılıklı Gol", ["btts", "nobtts"]),
     ("İY 1,5 Alt/Üst", ["iyu15", "iyo15"]),
 ]
-app = FastAPI(title="ATASU Intelligence", version="5.1.1")
+from mackolik_standing import (
+    resolve_match as mk_resolve_match,
+    standing_lines as mk_standing_lines,
+    analysis_lines as mk_analysis_lines,
+    score_open_picks,
+    tercih_from_open,
+    open_markets,
+)
+app = FastAPI(title="ATASU Intelligence", version="5.2.1")
 WEIGHTS = {
     "h": 1.2, "d": 1.0, "a": 1.2,
     "u25": 1.1, "o25": 1.1,
@@ -1030,9 +1038,9 @@ def meta():
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "markets": MARKETS,
-        "version": "5.1.2",
+        "version": "5.2.1",
         "warning": HISTORY_WARNING,
-        "rule": "Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır.",
+        "rule": "Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır. Puan durumu Maçkolik arşivinden çekilir.",
     }
 
 
@@ -1301,7 +1309,7 @@ def from_mac(req: MacIdReq):
 def selftest():
     return {
         "ok": True,
-        "version": "5.1.2",
+        "version": "5.2.1",
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "endpoints": ["/api/match-link", "/api/odds", "/api/exact-odds", "/api/plus6", "/api/betwatch"],
@@ -1425,7 +1433,15 @@ def odds_scan(req: OddsReq):
     bw["signals"] = money_signals(s, bw.get("overlay"), q)
     p6 = plus6_payload(q)
     lh = lh_style_engine(q, s)
-    yorum = compact_yorum(s, matches, title=req.title or "", league=req.league or "", q=q, bw=bw, p6=p6, lh=lh)
+    ev_name, dep_name = _parse_teams(req.title or "")
+    standing = None
+    try:
+        standing = mk_resolve_match(ev_name or "", dep_name or "", req.league or "")
+    except Exception:
+        standing = None
+    yorum = compact_yorum(
+        s, matches, title=req.title or "", league=req.league or "", q=q, bw=bw, p6=p6, lh=lh, standing=standing,
+    )
     return {
         "method": f"{len(q)} gerçek oran tarandı. En az {minimum}/{len(q)} oran ±{req.tolerance} içinde eşleşti.",
         "sample_audit": sample_audit,
@@ -1634,7 +1650,7 @@ def _pct(v):
     return None if not isinstance(v, (int, float)) else v
 
 
-def compact_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, lh=None):
+def compact_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, lh=None, standing=None):
     q = q or {}
     n = s.get("sample_ft") or 0
     ev, dep = _parse_teams(title)
@@ -1645,8 +1661,25 @@ def compact_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, lh=
     if league:
         lines.append("Lig filtresi: " + league)
 
+    if standing and standing.get("ok"):
+        lines.append(
+            "Mackolik tablo: "
+            + (standing.get("season_label") or "")
+            + (f" (sezon {standing.get('season_id')})" if standing.get("season_id") else "")
+        )
+        hs = mk_standing_lines(standing, "home")
+        ds = mk_standing_lines(standing, "away")
+        if hs:
+            lines.append("Ev " + " · ".join(hs))
+        if ds:
+            lines.append("Dep " + " · ".join(ds))
+        for ln in mk_analysis_lines(standing):
+            lines.append(ln)
+    elif standing and standing.get("note"):
+        lines.append("Mackolik tablo: " + standing["note"])
+
     if not n:
-        lines.append("Benzer oranlı sonuçlu maç bulunamadı. Sadece piyasa ve model konuşur.")
+        lines.append("Benzer oranlı sonuçlu maç bulunamadı. Sadece piyasa, tablo ve model konuşur.")
         if lh and lh.get("ok") and lh.get("dixon_coles"):
             dc = lh["dixon_coles"]
             lines.append(
@@ -1655,7 +1688,14 @@ def compact_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, lh=
             )
         if bw and not bw.get("matched"):
             lines.append("Betfair Exchange bu isimle maç açmamış veya eşleşmedi.")
-        lines.append("Karar: örnek yok, kuponu küçült veya geç.")
+        ranked = score_open_picks(q, s, lh, standing)
+        lines.append("Açık iddaa piyasaları: " + (", ".join(f"{n} {o}" for _, n, o in open_markets(q)) or "yok") + ".")
+        tercih = tercih_from_open(ranked, 0)
+        lines.append("Karar: örnek yok. Tercih yalnızca açık oranlardan.")
+        lines.append("")
+        lines.append("[[ATASU_TERCIH]]")
+        lines.extend(tercih[:6])
+        lines.append("[[/ATASU_TERCIH]]")
         return "\n".join(lines)
 
     p1, px, p2 = _pct(s.get("MS 1")) or 0, _pct(s.get("MS X")) or 0, _pct(s.get("MS 2")) or 0
@@ -1695,6 +1735,13 @@ def compact_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, lh=
         if fd:
             form_l.append(f"{fd['ad']} son {fd['n']} maç {fd['WDL']} (gol {fd['ort']}, form {fd['form']})")
         lines.append("Kendi havuz form: " + " | ".join(form_l) + ".")
+    preview = (standing or {}).get("table_preview") or []
+    if preview:
+        lines.append(
+            "Üst sıra: "
+            + ", ".join(f"{r['pos']}.{r['name']} {r['pts']}p" for r in preview[:5])
+            + "."
+        )
 
     lines.append("")
     lines.append("2) Piyasa oranları")
@@ -1812,44 +1859,34 @@ def compact_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, lh=
         lines.append(f"Gol karakteri yüksek: ortalama {avg or '-'}, 2.5 üst %{o25:.0f}, 3.5 üst %{o35:.0f}. Düşük skor beklentisi yok.")
     elif avg and avg <= 2.3 or o25 <= 45:
         lines.append(f"Gol karakteri düşük/orta: ortalama {avg or '-'}, 2.5 üst %{o25:.0f}.")
-    if pahali_ust:
+    if q.get("o25") and pahali_ust:
         lines.append(f"2.5 üst geçmişte %{o25:.0f} gelmiş, piyasa yaklaşık %{o25_book*100:.0f} istiyor. Üst pahalı.")
-    elif ucuz_ust:
+    elif q.get("o25") and ucuz_ust:
         lines.append(f"2.5 üst geçmişte %{o25:.0f}, piyasa %{o25_book*100:.0f}. Üstte hafif değer olabilir.")
     if q.get("o35") and o35 >= 60:
-        lines.append(f"3.5 üst kalıpta %{o35:.0f}. Oran {q.get('o35')} ise tempo yüksek ama n={n} küçük.")
+        lines.append(f"3.5 üst kalıpta %{o35:.0f}. Oran {q.get('o35')} açık; tempo yüksek ama n={n} küçük.")
+    elif not q.get("o35"):
+        lines.append("3,5 üst bültende yok; o hatta yorum yok.")
     if n < 30:
         lines.append("Havuz küçük. Tek seçeneğe yüklenme.")
-    tercih = []
-    if taraf_oy[1] >= 2 and taraf_oy[0] == "ev":
-        if avg >= 3.2 or o25 >= 70:
-            tercih.append("Ev kazanır tarafı kalıp ve modelde uyumlu, maç golcü.")
-            tercih.append("Kupon: ev veya ev + 2.5/3.5 üst.")
-            if tops:
-                tercih.append("Skor aralığı: " + ", ".join(t["score"] for t in tops[:3]) + ".")
-        else:
-            tercih.append("Ev tarafı uyumlu, tempo düşük/orta.")
-            tercih.append("Kupon: ev veya ev + 2.5 alt.")
-            tercih.append("Skor aralığı: 1-0, 2-0, 2-1.")
-    elif taraf_oy[1] >= 2 and taraf_oy[0] == "deplasman":
-        tercih.append("Deplasman tarafı uyumlu.")
-        tercih.append("Kupon: MS 2 veya deplasman çifte şans. Kör üst değil.")
-    elif taraf_oy[0] == "beraberlik" and px >= 30:
-        tercih.append("Beraberlik kalıpta var ama tek X genelde pahalı.")
-        tercih.append("Kupon: İY X / MS 1 veya çift şans.")
-    else:
-        tercih.append("Kaynaklar tam örtüşmüyor. Banko yok.")
-        tercih.append("Uzun oranlara (X / MS 2) model AL yazılmaz.")
-        if lider == "ev":
-            tercih.append("En temkinli okuma: küçük ev bahsi.")
-    if n < 30:
-        tercih.append(f"Örnek {n} maç; bahsi küçük tut.")
-    if not matched_bw:
-        tercih.append("Betfair teyidi yok, güven bir kademe düşük.")
-    lines.append("Bu metin kanıt değil. Kalıp + model + para sentezi.")
+    ranked = score_open_picks(q, s, lh, standing)
+    acik = open_markets(q)
+    lines.append("Açık iddaa: " + (", ".join(f"{nm} {od}" for _, nm, od in acik) or "yok") + ".")
+    if ranked:
+        top3 = "; ".join(
+            f"{x['name']} EV {x.get('ev')}" + (f" ({x['stand_note']})" if x.get("stand_note") else "")
+            for x in ranked[:3]
+        )
+        lines.append("Açık piyasa sıralaması: " + top3 + ".")
+    tercih = tercih_from_open(ranked, n)
+    if taraf_oy[1] >= 2 and taraf_oy[0] == "ev" and q.get("h"):
+        tercih.insert(1, "Kalıp/model ev tarafını destekliyor; kupon yalnızca açık MS 1 ile birleşir.")
+    elif taraf_oy[1] >= 2 and taraf_oy[0] == "deplasman" and q.get("a"):
+        tercih.insert(1, "Kalıp/model deplasman tarafını destekliyor; kupon yalnızca açık MS 2 ile birleşir.")
+    lines.append("Bu metin kanıt değil. Kalıp + tablo + model + açık iddaa sentezi.")
     lines.append("")
     lines.append("[[ATASU_TERCIH]]")
-    lines.extend(tercih[:5])
+    lines.extend(tercih[:6])
     lines.append("[[/ATASU_TERCIH]]")
     return "\n".join(lines)
 
@@ -1859,6 +1896,12 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
     s = stats(matches)
     n = s.get("sample_ft") or 0
     p6 = plus6_payload(q)
+    ev_name, dep_name = _parse_teams(match_title)
+    standing = None
+    try:
+        standing = mk_resolve_match(ev_name or "", dep_name or "", league or "")
+    except Exception as e:
+        standing = {"ok": False, "note": "Puan durumu alınamadı: " + str(e)[:80]}
     lines = []
     title = f"{n} eşleşen sonuçlu maç"
     if n:
@@ -1884,7 +1927,10 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
     bw = betwatch_find(match_title, q=q)
     bw["signals"] = money_signals(s, bw.get("overlay"), q)
     lh = lh_style_engine(q, s)
-    yorum = compact_yorum(s, matches, title=match_title or title, league=league, q=q, bw=bw, p6=p6, lh=lh)
+    yorum = compact_yorum(
+        s, matches, title=match_title or title, league=league, q=q, bw=bw, p6=p6, lh=lh, standing=standing,
+    )
+    open_rank = score_open_picks(q, s, lh, standing)
     return {
         "title": title,
         "text": " ".join(lines),
@@ -1898,6 +1944,9 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
         "yorum": yorum,
         "betwatch": bw,
         "lh_model": lh,
+        "standing": standing,
+        "open_markets": [{"key": k, "name": n, "odds": o} for k, n, o in open_markets(q)],
+        "open_picks": open_rank,
     }
 
 
@@ -1988,3 +2037,32 @@ def brief(req: OddsReq):
     if len(q) < 2:
         raise HTTPException(400, "En az 2 oran lazım.")
     return brief_from_odds(q, req.tolerance, req.league, req.limit, title=req.title or "")
+
+
+class StandingReq(BaseModel):
+    title: str = ""
+    home: str = ""
+    away: str = ""
+    league: str = ""
+
+
+@app.post("/api/standing")
+def standing_api(req: StandingReq):
+    home, away = req.home.strip(), req.away.strip()
+    if not home or not away:
+        home2, away2 = _parse_teams(req.title)
+        home = home or (home2 or "")
+        away = away or (away2 or "")
+    if not home and not away:
+        raise HTTPException(400, "Maç adı veya takım lazım.")
+    try:
+        pack = mk_resolve_match(home, away, req.league or "")
+    except Exception as e:
+        raise HTTPException(502, "Puan durumu alınamadı: " + str(e)[:120])
+    return pack
+
+
+@app.get("/api/standing")
+def standing_get(title: str = "", home: str = "", away: str = "", league: str = ""):
+    return standing_api(StandingReq(title=title, home=home, away=away, league=league))
+
