@@ -3,122 +3,185 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>ATASU Intelligence 4.9.4</title>
+<title>ATASU</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#0b1020;--card:#141b2d;--line:#243049;--txt:#e8eefc;--muted:#8ea0c0;
-  --acc:#3ee0a2;--acc2:#6ea8ff;--bad:#ff6b7a;--warn:#ffc857;
+  --ink:#0a0b0d; --paper:#111318; --line:rgba(232,210,160,.14);
+  --gold:#e8d2a0; --gold2:#c4a46a; --fog:#9aa09a; --snow:#f4efe4;
+  --go:#c8f5c0; --stop:#ff9aa4;
 }
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);font-family:Inter,system-ui,Segoe UI,sans-serif}
-body{padding:16px 14px 48px}
-.wrap{max-width:980px;margin:0 auto}
-h1{font-size:22px;margin:6px 0 4px}
-.sub{color:var(--muted);font-size:13px;margin-bottom:16px}
-.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
-.tab{background:#1a2338;border:1px solid var(--line);color:var(--txt);padding:9px 12px;border-radius:10px;cursor:pointer}
-.tab.on{background:#1d3a34;border-color:#2f6b59;color:var(--acc)}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:10px 0}
-label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
-textarea,input,select{width:100%;background:#0f1626;border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:10px;font:13px/1.4 ui-monospace,Menlo,monospace}
-textarea{min-height:150px;resize:vertical}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.btns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
-button{border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
-.g{background:var(--acc);color:#062016}
-.b{background:#2a3d68;color:#dbe7ff}
-.r{background:#4a2230;color:#ffd0d6}
-.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
-.k{background:#10182a;border:1px solid var(--line);border-radius:10px;padding:10px}
-.k b{display:block;font-size:18px}
-.ok{color:var(--acc)}.no{color:var(--bad)}.mu{color:var(--muted)}
-pre{white-space:pre-wrap;word-break:break-word;font-size:12px;color:#c9d6f0}
+html,body{margin:0;background:var(--ink);color:var(--snow);font-family:Manrope,system-ui,sans-serif}
+body{
+  min-height:100vh;
+  background:
+    linear-gradient(180deg, rgba(232,210,160,.05), transparent 28%),
+    radial-gradient(ellipse 80% 40% at 50% -10%, rgba(196,164,106,.12), transparent 50%),
+    var(--ink);
+}
+.frame{max-width:1120px;margin:0 auto;padding:0 22px 80px}
+.mast{
+  padding:28px 0 0;
+  border-bottom:1px solid var(--line);
+}
+.mast-row{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.word{
+  font-family:"Cormorant Garamond",Georgia,serif;
+  font-size:42px;line-height:.9;margin:0;font-weight:500;letter-spacing:-.02em;
+  color:var(--gold);
+}
+.word i{font-style:italic;color:var(--snow);font-weight:500}
+.meta{font:400 11px/1.4 "IBM Plex Mono",monospace;color:var(--fog);letter-spacing:.08em;text-transform:uppercase;margin-top:10px}
+.tabs{display:flex;gap:0;margin-top:22px}
+.tab{
+  background:none;border:0;border-bottom:1px solid transparent;
+  color:var(--fog);padding:12px 16px 14px;font:500 12px Manrope;
+  letter-spacing:.12em;text-transform:uppercase;cursor:pointer
+}
+.tab.on{color:var(--gold);border-bottom-color:var(--gold)}
+.stage{padding-top:28px}
+.card{
+  background:linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.01));
+  border:1px solid var(--line);padding:22px;
+}
+.kicker{font:500 11px/1 "IBM Plex Mono",monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--gold2);margin:0 0 14px}
+label{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--fog);margin:12px 0 6px}
+textarea,input{
+  width:100%;background:#0c0d10;border:1px solid var(--line);color:var(--snow);
+  border-radius:0;padding:12px 14px;font:13px/1.5 "IBM Plex Mono",monospace
+}
+textarea{min-height:160px;resize:vertical}
+textarea:focus,input:focus{outline:none;border-color:var(--gold2)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.btns{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+button{border:0;padding:12px 18px;font:600 12px Manrope;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+.g{background:var(--gold);color:#16120a}
+.b{background:transparent;color:var(--snow);border:1px solid var(--line)}
+.r{background:transparent;color:var(--stop);border:1px solid rgba(255,154,164,.25)}
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;background:var(--line);margin:18px 0;border:1px solid var(--line)}
+.k{background:#111318;padding:14px 16px}
+.k span{display:block;font:400 10px/1 "IBM Plex Mono",monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--fog)}
+.k b{display:block;margin-top:8px;font:500 26px/1 "Cormorant Garamond",serif;color:var(--snow)}
+.ok{color:var(--go)}.no{color:var(--stop)}.mu{color:var(--fog);font-size:13px}
 .hidden{display:none}
-table{width:100%;border-collapse:collapse;font-size:12px}
-th,td{border-bottom:1px solid var(--line);padding:6px 4px;text-align:left}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+th{color:var(--fog);font:500 10px/1 Manrope;letter-spacing:.1em;text-transform:uppercase;text-align:left;padding:10px 8px;border-bottom:1px solid var(--line)}
+td{padding:10px 8px;border-bottom:1px solid rgba(232,210,160,.08);font-family:"IBM Plex Mono",monospace;font-size:12px}
+.verdict{padding:22px 22px 20px;margin:18px 0 8px;border:1px solid var(--line)}
+.verdict.go{background:linear-gradient(135deg, rgba(200,245,192,.08), transparent 55%);border-color:rgba(200,245,192,.28)}
+.verdict.pass{background:transparent}
+.v-kicker{font:500 10px/1 "IBM Plex Mono",monospace;letter-spacing:.18em;text-transform:uppercase;color:var(--gold2)}
+.v-title{font:500 36px/1.05 "Cormorant Garamond",serif;margin:8px 0 6px}
+.verdict.go .v-title{color:var(--go)}
+.v-sub{color:var(--fog);font-size:13px;max-width:52ch}
+.rules{display:grid;gap:8px;margin:8px 0 16px}
+.rule{display:grid;grid-template-columns:1fr auto;gap:4px 16px;padding:14px 16px;border:1px solid var(--line)}
+.rule-sel{font-family:"Cormorant Garamond",serif;font-size:22px}
+.rule-hit{font:500 13px "IBM Plex Mono",monospace;color:var(--gold)}
+.rule-why{grid-column:1/-1;color:var(--fog);font-size:12.5px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);padding:8px 10px;font:12px "IBM Plex Mono",monospace}
+iframe{width:100%;height:640px;border:1px solid var(--line);margin-top:14px;background:#000}
+@media(max-width:700px){
+  .word{font-size:34px}
+  .row{grid-template-columns:1fr}
+  .frame{padding-left:16px;padding-right:16px}
+  .tab{padding-left:10px;padding-right:10px;letter-spacing:.06em}
+}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>ATASU Intelligence 4.9.4</h1>
-  <div class="sub" id="metaLine">Yükleniyor…</div>
-  <div class="tabs">
-    <button class="tab on" data-t="model">ATASU MODEL</button>
-    <button class="tab" data-t="exact">EXCEL ORAN</button>
-    <button class="tab" data-t="p6">+6 GOL</button>
-  </div>
-
+<div class="frame">
+  <header class="mast">
+    <div class="mast-row">
+      <div>
+        <h1 class="word">ATA<span>SU</span> <i>Intelligence</i></h1>
+        <div class="meta" id="metaLine">Yükleniyor</div>
+      </div>
+    </div>
+    <nav class="tabs">
+      <button class="tab on" data-t="model">Model</button>
+      <button class="tab" data-t="exact">Excel</button>
+      <button class="tab" data-t="p6">+6</button>
+      <button class="tab" data-t="lh">LH</button>
+    </nav>
+  </header>
+  <main class="stage">
   <section id="panel-model" class="card">
-    <label>Bülten / Maçkolik metni</label>
-    <textarea id="txtModel" placeholder="Bülteni yapıştır veya Maçkolik linki kullan"></textarea>
+    <p class="kicker">Excel eşleşme · İY / MS</p>
+    <label>Bülten</label>
+    <textarea id="txtModel" placeholder="Oran metnini yapıştır"></textarea>
     <div class="row">
-      <div><label>Maçkolik linki</label><input id="link" placeholder="https://www.mackolik.com/..."></div>
-      <div><label>Lig filtresi (opsiyonel)</label><input id="league" placeholder="ör. BREK"></div>
+      <div><label>Maçkolik</label><input id="link" placeholder="https://www.mackolik.com/..."></div>
+      <div><label>Lig</label><input id="league" placeholder="BREK"></div>
     </div>
     <div class="row">
       <div><label>Tolerans</label><input id="tol" type="number" step="0.01" value="0.05"></div>
       <div><label>Limit</label><input id="lim" type="number" value="200"></div>
     </div>
     <div class="row">
-      <div><label>Bülten tarihi</label><input id="bDate" placeholder="2026-09-22"></div>
-      <div><label>&nbsp;</label><button class="b" onclick="loadBulletin()">Bugünün bülteni</button></div>
+      <div><label>Tarih</label><input id="bDate" placeholder="2026-09-22"></div>
+      <div><label>&nbsp;</label><button class="b" onclick="loadBulletin()">Bülten</button></div>
     </div>
     <div id="bulletinBox" class="mu"></div>
     <div class="btns">
-      <button class="b" onclick="pullLink()">Linki çek</button>
+      <button class="b" onclick="pullLink()">Link</button>
       <button class="g" onclick="scanModel()">Tara</button>
-      <button class="r" onclick="clearAll('txtModel','outModel')">Temizle</button>
+      <button class="r" onclick="clearAll('txtModel','outModel')">Sil</button>
     </div>
     <div id="outModel"></div>
   </section>
-
   <section id="panel-exact" class="card hidden">
-    <label>Aynı bülten (birebir eşleşme, tolerans yok)</label>
+    <p class="kicker">Birebir oran</p>
+    <label>Bülten</label>
     <textarea id="txtExact"></textarea>
     <div class="btns">
-      <button class="g" onclick="scanExact()">Birebir tara</button>
-      <button class="r" onclick="clearAll('txtExact','outExact')">Temizle</button>
+      <button class="g" onclick="scanExact()">Tara</button>
+      <button class="r" onclick="clearAll('txtExact','outExact')">Sil</button>
     </div>
     <div id="outExact"></div>
   </section>
-
   <section id="panel-p6" class="card hidden">
-    <p class="mu">Referans bant: 2,5Ü 1.20–1.28 · 3,5Ü 1.66–1.89 · 4,5Ü/g45 2.64–3.14 · KG Var 1.22–1.87 · İY 0,5Ü 1.05–1.08 veya İlk Gol Olmaz 22.10–26.00</p>
+    <p class="kicker">+6 referans bant</p>
+    <p class="mu">2,5Ü 1.20–1.28 · 3,5Ü 1.66–1.89 · 4,5Ü 2.64–3.14 · KG Var 1.22–1.87</p>
     <label>Bülten</label>
     <textarea id="txtP6"></textarea>
     <div class="btns">
-      <button class="g" onclick="scanP6()">+6 analiz</button>
-      <button class="r" onclick="clearAll('txtP6','outP6')">Temizle</button>
+      <button class="g" onclick="scanP6()">Analiz</button>
+      <button class="r" onclick="clearAll('txtP6','outP6')">Sil</button>
     </div>
     <div id="outP6"></div>
   </section>
-
-  <section class="card">
-    <b>Kelly hesap</b>
+  <section id="panel-lh" class="card hidden">
+    <p class="kicker">LH Bet Predict</p>
+    <p class="mu">Ayrı model. ATASU kuralı history.json; LH form ve Monte Carlo.</p>
     <div class="row">
-      <div><label>Oran</label><input id="kOdds" type="number" step="0.01" value="1.85"></div>
-      <div><label>Tahmini isabet %</label><input id="kP" type="number" step="0.1" value="60"></div>
+      <div><label>Maç</label><input id="lhQ" placeholder="Ev - Dep"></div>
+      <div><label>&nbsp;</label><button class="g" onclick="openLH()">Aç</button></div>
     </div>
-    <div class="row">
-      <div><label>Kasa (opsiyonel)</label><input id="kBank" type="number" step="1" placeholder="1000"></div>
-      <div><label>&nbsp;</label><button class="g" onclick="calcKelly()">Hesapla</button></div>
-    </div>
-    <div id="outKelly"></div>
+    <iframe id="lhFrame" title="LH Bet Predict" src="https://eagle-sapphire-quiet-bold.grok.me/"></iframe>
   </section>
+  </main>
 </div>
-
 <script>
+
 const $ = id => document.getElementById(id);
 document.querySelectorAll('.tab').forEach(btn=>{
   btn.onclick=()=>{
     document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
     btn.classList.add('on');
-    ['model','exact','p6'].forEach(t=>$('panel-'+t).classList.toggle('hidden', t!==btn.dataset.t));
+    ['model','exact','p6','lh'].forEach(t=>$('panel-'+t).classList.toggle('hidden', t!==btn.dataset.t));
   };
 });
-
+try{
+  const saved = localStorage.getItem('atasu_txt');
+  if(saved) $('txtModel').value = saved;
+}catch(e){}
 fetch('/api/meta').then(r=>r.json()).then(m=>{
-  $('metaLine').textContent = `${m.history_rows} kayıt · ${m.completed_rows} sonuçlu · v${m.version}` + (m.warning? ' · '+m.warning:'');
+  $('metaLine').textContent = m.history_rows + ' kayit · ' + m.completed_rows + ' sonuclu · v' + m.version + (m.warning? ' · '+m.warning:'');
 }).catch(()=>{$('metaLine').textContent='API yok — uvicorn app:app --port 8000';});
 
 function parseBulletin(text){
@@ -138,26 +201,28 @@ function parseBulletin(text){
     const a = parseFloat(String(m[1]).replace(',','.'));
     if(a>1 && a<80) odds[k]=a;
   };
+  grab2(/2\s*[,.]?\s*5\s*Alt\s*\/\s*Ust\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i,'u25','o25');
   grab2(/2\s*[,.]?\s*5\s*Alt\s*\/\s*Üst\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i,'u25','o25');
   grab2(/3\s*[,.]?\s*5\s*Alt\s*\/\s*Üst\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i,'u35','o35');
   grab2(/4\s*[,.]?\s*5\s*Alt\s*\/\s*Üst\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i,'g45','o45');
+  grab2(/Karsilikli\s*Gol[^\n]*?Var\s+([0-9]+[.,][0-9]+)[^\n]*?Yok\s+([0-9]+[.,][0-9]+)/i,'btts','nobtts');
   grab2(/Karşılıklı\s*Gol[^\n]*?Var\s+([0-9]+[.,][0-9]+)[^\n]*?Yok\s+([0-9]+[.,][0-9]+)/i,'btts','nobtts');
   if(!odds.btts) grab1(/Karşılıklı\s*Gol[^\n]*?Var\s+([0-9]+[.,][0-9]+)/i,'btts');
+  grab2(/1\.\s*Yari\s*1\s*[,.]?\s*5\s*Alt\s*\/\s*Üst\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i,'iyu15','iyo15');
   grab2(/1\.\s*Yarı\s*0\s*[,.]?\s*5\s*Alt\s*\/\s*Üst\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i,'iyu05','iy05');
   grab2(/1\.\s*Yarı\s*1\s*[,.]?\s*5\s*Alt\s*\/\s*Üst\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i,'iyu15','iyo15');
+  grab1(/Ilk\s*Gol[^\n]*?Olmaz\s+([0-9]+[.,][0-9]+)/i,'nofirst');
   grab1(/İlk\s*Gol[^\n]*?Olmaz\s+([0-9]+[.,][0-9]+)/i,'nofirst');
-  if(!odds.nofirst) grab1(/İlk\s*Korner[^\n]*?Olmaz\s+([0-9]+[.,][0-9]+)/i,'nofirst');
   grab1(/6\s*\+\s*Gol\s+([0-9]+[.,][0-9]+)/i,'g6');
-  const ms = t.match(/(?:Maç\s*Sonucu|1\s*X\s*2)[^\n]*?([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i);
+  const ms = t.match(/(?:Mac\s*Sonucu|Maç\s*Sonucu|1\s*X\s*2)[^\n]*?([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i);
   if(ms){
     const h=parseFloat(ms[1].replace(',','.')), d=parseFloat(ms[2].replace(',','.')), a=parseFloat(ms[3].replace(',','.'));
     if(h>1) odds.h=h; if(d>1) odds.d=d; if(a>1) odds.a=a;
   }
   return odds;
 }
-
 function chips(odds){
-  return Object.entries(odds).map(([k,v])=>`<span class="k" style="display:inline-block;margin:3px">${k}: <b>${v}</b></span>`).join(' ');
+  return Object.entries(odds).map(([k,v])=>'<span class="k" style="display:inline-block;margin:3px">'+k+': <b>'+v+'</b></span>').join(' ');
 }
 function clearAll(a,b){ $(a).value=''; $(b).innerHTML=''; }
 
@@ -168,8 +233,8 @@ async function loadBulletin(){
   const j = await r.json();
   if(!r.ok) return $('bulletinBox').innerHTML = '<span class="no">'+(j.detail||'bülten yok')+'</span>';
   const rows = j.matches||[];
-  $('bulletinBox').innerHTML = `<div>${j.count} maç · ${j.date}</div>` + rows.slice(0,80).map((m,i)=>
-    `<div class="k" style="margin:4px 0;cursor:pointer" onclick="pickMatch(${i})">${m.time||''} ${m.league||''} <b>${m.home} - ${m.away}</b> ${m.h||'-'}/${m.d||'-'}/${m.a||'-'}</div>`
+  $('bulletinBox').innerHTML = '<div>'+j.count+' mac · '+j.date+'</div>' + rows.slice(0,80).map((m,i)=>
+    '<div class="k" style="margin:4px 0;cursor:pointer" onclick="pickMatch('+i+')">'+(m.time||'')+' '+(m.league||'')+' <b>'+m.home+' - '+m.away+'</b> '+(m.h||'-')+'/'+(m.d||'-')+'/'+(m.a||'-')+'</div>'
   ).join('');
   window._bulten = rows;
 }
@@ -177,14 +242,13 @@ function pickMatch(i){
   const m = (window._bulten||[])[i];
   if(!m) return;
   const lines = [
-    `${m.home} - ${m.away}`,
-    m.h?`1 X 2 ${m.h} ${m.d} ${m.a}`:'',
-    (m.u25&&m.o25)?`2,5 Alt/Üst ${m.u25} ${m.o25}`:''
+    m.home+' - '+m.away,
+    m.h?('1 X 2 '+m.h+' '+m.d+' '+m.a):'',
+    (m.u25&&m.o25)?('2,5 Alt/Üst '+m.u25+' '+m.o25):''
   ].filter(Boolean).join('\n');
   $('txtModel').value = lines;
   if(m.morebets) $('link').value = m.morebets;
 }
-
 async function pullLink(){
   const url=$('link').value.trim();
   if(!url) return alert('Link gir');
@@ -193,74 +257,71 @@ async function pullLink(){
   if(!r.ok) return alert(j.detail||'Link okunamadı');
   $('txtModel').value = (j.title? j.title+'\n':'') + (j.text||'');
 }
-
 async function scanModel(){
+  try{ localStorage.setItem('atasu_txt', $('txtModel').value); }catch(e){}
   const odds = parseBulletin($('txtModel').value);
-  $('outModel').innerHTML = `<div class="mu">Ayıklanan:</div>${chips(odds)}`;
+  $('outModel').innerHTML = '<div class="mu">Excel’e yerleştirilen oran</div>'+chips(odds);
   if(Object.keys(odds).length<2) return $('outModel').innerHTML += '<p class="no">En az 2 oran lazım.</p>';
   const body = {odds, tolerance: Number($('tol').value||0.05), league:$('league').value, limit:Number($('lim').value||200)};
   const r = await fetch('/api/odds',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const j = await r.json();
-  if(!r.ok) return $('outModel').innerHTML += `<p class="no">${j.detail||'hata'}</p>`;
-  const s=j.stats||{};
-  $('outModel').innerHTML += `
-    <div class="kpi" style="margin-top:10px">
-      <div class="k">Eşleşen<b>${j.matched}</b></div>
-      <div class="k">Havuz<b>${j.pool_size}</b></div>
-      <div class="k">Ort gol<b>${s.avg_goals??'-'}</b></div>
-      <div class="k">2,5 Üst<b>${s['2,5 Üst']??'-'}%</b></div>
-      <div class="k">6+ Gol<b>${s['6+ Gol']??'-'}%</b></div>
-      <div class="k">Banko<b>${j.banko?.status||'-'}</b></div>
-      <div class="k">Beklenen gol<b>${j.expected_goals??'-'}</b></div>
-    </div>
-    ${(j.signals||[]).slice(0,8).map(s=>`<div>${s.name} @${s.odds??'-'}: geçmiş %${s.historical_percent} · edge ${s.edge??'-'} · Kelly ${s.kelly!=null?(s.kelly_half*100).toFixed(1)+'% (½)':'-'} · Wilson ${s.wilson_low??'-'} · ${s.signal}</div>`).join('')}
-    <p class="mu">${j.method}</p>
-    ${(j.why||[]).map(x=>`<div>• ${x}</div>`).join('')}
-    ${tableMatches(j.matches)}`;
+  if(!r.ok) return $('outModel').innerHTML += '<p class="no">'+(j.detail||'hata')+'</p>';
+  const rows = j.matches||[];
+  let html = '<div class="kpi">';
+  html += '<div class="k"><span>Eşleşen maç</span><b>'+j.matched+'</b></div>';
+  html += '<div class="k"><span>Karşılaştırılan</span><b>'+(j.searched_count||Object.keys(odds).length)+'</b></div>';
+  html += '<div class="k"><span>± tolerans</span><b>'+(j.tolerance??'-')+'</b></div></div>';
+  html += '<p class="mu">Aynı (veya ±tolerans) oranlara sahip geçmiş maçlar. Birden fazla oran tutarsa hepsi listelenir.</p>';
+  html += tableMatches(rows);
+  $('outModel').innerHTML += html;
 }
-
 async function scanExact(){
   const odds = parseBulletin($('txtExact').value);
   const r = await fetch('/api/exact-odds',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({odds,tolerance:0})});
   const j = await r.json();
-  if(!r.ok) return $('outExact').innerHTML = `<p class="no">${j.detail||'hata'}</p>`;
-  $('outExact').innerHTML = chips(odds) + (j.categories||[]).map(c=>`
-    <div class="card"><b>${c.category}</b> · ${c.status} · ${c.matched}
-    ${(c.summary?.top||[]).map(o=>`<div>${o.name}: %${o.percent}</div>`).join('')}</div>`).join('');
+  if(!r.ok) return $('outExact').innerHTML = '<p class="no">'+(j.detail||'hata')+'</p>';
+  $('outExact').innerHTML = chips(odds) + (j.categories||[]).map(c=>{
+    const tops = (c.summary&&c.summary.top||[]).map(o=>'<div>'+o.name+': %'+o.percent+'</div>').join('');
+    return '<div class="card"><b>'+c.category+'</b> · '+c.status+' · '+c.matched+tops+'</div>';
+  }).join('');
 }
-
 async function scanP6(){
   const o = parseBulletin($('txtP6').value);
   const payload = {o25:o.o25,o35:o.o35,o45:o.o45,g45:o.g45,btts:o.btts,iy05:o.iy05,nofirst:o.nofirst,g6:o.g6,iyu15:o.iyu15,iyo15:o.iyo15};
   const r = await fetch('/api/plus6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   const j = await r.json();
-  if(!r.ok) return $('outP6').innerHTML = `<p class="no">${j.detail||'hata'}</p>`;
+  if(!r.ok) return $('outP6').innerHTML = '<p class="no">'+(j.detail||'hata')+'</p>';
   const cls = j.compatibility_percent>=80?'ok': j.compatibility_percent>=40?'warn':'no';
-  $('outP6').innerHTML = `
-    ${chips(o)}
-    <div class="k" style="margin:10px 0"><span class="${cls}">Uyumluluk %${j.compatibility_percent}</span> · ${j.matched_rules}/${j.total_rules}</div>
-    ${(j.rules||[]).map(x=>`<div class="${x.match?'ok':'no'}">${x.match?'✔':'✖'} ${x.name} · ${x.value??(x.values||[]).filter(v=>v!=null).join(' / ')||'-'} · [${(x.range||[]).join('–')}]</div>`).join('')}
-    <p class="mu">${j.note||''}</p>`;
+  let html = chips(o)+'<div class="k" style="margin:10px 0"><span class="'+cls+'">Uyumluluk %'+j.compatibility_percent+'</span> · '+j.matched_rules+'/'+j.total_rules+'</div>';
+  (j.rules||[]).forEach(x=>{
+    const val = x.value!=null ? x.value : ((x.values||[]).filter(v=>v!=null).join(' / ')||'-');
+    const rng = (x.range||[]).join('-');
+    html += '<div class="'+(x.match?'ok':'no')+'">'+(x.match?'OK':'X')+' '+x.name+' · '+val+' · ['+rng+']</div>';
+  });
+  html += '<p class="mu">'+(j.note||'')+'</p>';
+  $('outP6').innerHTML = html;
 }
-
+function openLH(){
+  const q = ($('lhQ').value||'').trim();
+  const base = 'https://eagle-sapphire-quiet-bold.grok.me/';
+  window.open(q ? (base + '?q=' + encodeURIComponent(q)) : base, '_blank');
+  const f = $('lhFrame');
+  if(f) f.src = base;
+}
 async function calcKelly(){
   const body = {odds:Number($('kOdds').value), probability_percent:Number($('kP').value), bankroll: Number($('kBank').value)||null};
   const r = await fetch('/api/kelly',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const j = await r.json();
-  if(!r.ok) return $('outKelly').innerHTML = `<p class="no">${j.detail||'hata'}</p>`;
-  $('outKelly').innerHTML = `<div class="kpi" style="margin-top:8px">
-    <div class="k">Tam Kelly<b>%${j.kelly_pct}</b></div>
-    <div class="k">Yarım Kelly<b>%${j.kelly_half_pct}</b></div>
-    <div class="k">EV<b>${j.expected_value}</b></div>
-    <div class="k">Stake<b>${j.stake??'-'}</b></div>
-  </div><p class="mu">${j.formula} · ${j.note}</p>`;
+  if(!r.ok) return $('outKelly').innerHTML = '<p class="no">'+(j.detail||'hata')+'</p>';
+  $('outKelly').innerHTML = '<div class="kpi" style="margin-top:8px"><div class="k">Tam Kelly<b>%'+j.kelly_pct+'</b></div><div class="k">Yarım Kelly<b>%'+j.kelly_half_pct+'</b></div><div class="k">EV<b>'+j.expected_value+'</b></div><div class="k">Stake<b>'+(j.stake??'-')+'</b></div></div><p class="mu">'+j.formula+' · '+j.note+'</p>';
 }
-
 function tableMatches(rows){
-  if(!rows||!rows.length) return '<p class="mu">Eşleşen maç yok.</p>';
-  const head = '<tr><th>Tarih</th><th>Lig</th><th>Maç</th><th>İY</th><th>MS</th><th>Uyum</th></tr>';
-  const body = rows.slice(0,40).map(r=>`<tr><td>${r.date||''}</td><td>${r.league||''}</td><td>${r.home||''} - ${r.away||''}</td><td>${r.ht||''}</td><td>${r.ft||''}</td><td>${r._matched_odds||''}/${r._compared_odds||''}</td></tr>`).join('');
-  return `<table>${head}${body}</table>`;
+  if(!rows||!rows.length) return '<p class="mu">Bu oranlara uyan geçmiş maç yok.</p>';
+  let body = '';
+  rows.forEach(r=>{
+    body += '<tr><td>'+(r.date||'')+'</td><td>'+(r.league||'')+'</td><td>'+(r.home||'')+' — '+(r.away||'')+'</td><td>'+(r.ht||'—')+'</td><td>'+(r.ft||'—')+'</td><td>'+(r._matched_odds||0)+'/'+(r._compared_odds||0)+'</td></tr>';
+  });
+  return '<table><tr><th>Tarih</th><th>Lig</th><th>Maç</th><th>İY</th><th>MS</th><th>Tutan oran</th></tr>'+body+'</table>';
 }
 </script>
 </body>

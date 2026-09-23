@@ -35,7 +35,7 @@ GROUPS = [
     ("Karşılıklı Gol", ["btts", "nobtts"]),
     ("İY 1,5 Alt/Üst", ["iyu15", "iyo15"]),
 ]
-app = FastAPI(title="ATASU Intelligence", version="4.9.4")
+app = FastAPI(title="ATASU Intelligence", version="5.0.0")
 WEIGHTS = {
     "h": 1.2, "d": 1.0, "a": 1.2,
     "u25": 1.1, "o25": 1.1,
@@ -74,6 +74,9 @@ def stats(rows):
             z["htHome" if hh > ha else "htDraw" if hh == ha else "htAway"] += 1
             fh = hh + ha; sh = t - fh
             z["fh" if fh > sh else "sh" if sh > fh else "eq"] += 1
+            z["sh1" if sh >= 1 else "sh0"] += 1
+            z["sh2" if sh >= 2 else "shlt2"] += 1
+            z["both_halves" if fh >= 1 and sh >= 1 else "not_both_halves"] += 1
 
     def p(k, d):
         return round(100 * z[k] / d, 1) if d else None
@@ -92,6 +95,8 @@ def stats(rows):
         "4,5 Üst": p("o45", n), "6+ Gol": p("g6", n),
         "İY 1": p("htHome", nh), "İY X": p("htDraw", nh), "İY 2": p("htAway", nh),
         "Daha çok gol 1.Y": p("fh", nh), "Daha çok gol 2.Y": p("sh", nh), "Yarılar eşit": p("eq", nh),
+        "2.Y 1+ Gol": p("sh1", nh), "2.Y 2+ Gol": p("sh2", nh),
+        "Her iki yarı gol": p("both_halves", nh),
     }
 
 
@@ -201,6 +206,79 @@ def expected_goals(q):
     return lam
 
 
+def _fact(n):
+    x = 1
+    for i in range(2, n + 1):
+        x *= i
+    return x
+
+
+def poisson_pmf(k, lam):
+    if lam is None or lam <= 0:
+        return None
+    return (lam ** k) * (2.718281828 ** (-lam)) / _fact(k)
+
+
+def poisson_board(lam, home_share=0.55):
+    if not lam:
+        return None
+    lh = max(0.15, lam * home_share)
+    la = max(0.15, lam - lh)
+    scores = []
+    p_o25 = p_btts = p_g6 = 0.0
+    for h in range(0, 8):
+        ph = poisson_pmf(h, lh)
+        for a in range(0, 8):
+            pa = poisson_pmf(a, la)
+            p = ph * pa
+            t = h + a
+            if t >= 3:
+                p_o25 += p
+            if h and a:
+                p_btts += p
+            if t >= 6:
+                p_g6 += p
+            scores.append({"score": f"{h}-{a}", "percent": round(p * 100, 2)})
+    scores.sort(key=lambda x: -x["percent"])
+    return {
+        "lambda_total": lam,
+        "lambda_home": round(lh, 2),
+        "lambda_away": round(la, 2),
+        "p_o25": round(p_o25 * 100, 1),
+        "p_btts": round(p_btts * 100, 1),
+        "p_g6": round(p_g6 * 100, 1),
+        "top": scores[:8],
+        "note": "Bağımsız Poisson; Dixon-Coles düzeltmesi yok. Ev payı 0.55 varsayımı.",
+    }
+
+
+def late_goal_profile(rows):
+    n = sh1 = sh2 = both = 0
+    for r in rows:
+        ft = score(r.get("ft"))
+        ht = score(r.get("ht"))
+        if not ft or not ht:
+            continue
+        n += 1
+        sh = (ft[0] + ft[1]) - (ht[0] + ht[1])
+        if sh >= 1:
+            sh1 += 1
+        if sh >= 2:
+            sh2 += 1
+        if (ht[0] + ht[1]) >= 1 and sh >= 1:
+            both += 1
+    if not n:
+        return {"sample": 0}
+    return {
+        "sample": n,
+        "second_half_1plus_percent": round(100 * sh1 / n, 1),
+        "second_half_2plus_percent": round(100 * sh2 / n, 1),
+        "both_halves_percent": round(100 * both / n, 1),
+        "wilson_sh1": wilson(sh1, n),
+        "note": "Geç gol dakikası history.json'da yok; 2. yarı golü proxy olarak kullanılır.",
+    }
+
+
 def wilson(k, n, z=1.64):
     if not n:
         return None
@@ -243,6 +321,8 @@ def signal_engine(stats_obj, prob_groups, n, q=None):
         ("KG Var", "btts"), ("KG Yok", "nobtts"),
         ("MS 1", "h"), ("MS X", "d"), ("MS 2", "a"),
         ("6+ Gol", "g6"),
+        ("2.Y 1+ Gol", None),
+        ("2.Y 2+ Gol", None),
     ]
     hits = int(n or 0)
     for name, key in pairs:
@@ -396,6 +476,109 @@ def banko_engine(prob_groups):
     }
 
 
+# history.json sonuçlu maçlardan türetilmiş oran bantları (n>=220, isabet >=73%)
+EMPIRICAL_RULES = [
+    {
+        "id": "u35_u25",
+        "selection": "3,5 Alt",
+        "need": [("u35", 1.01, 1.30), ("u25", 1.01, 1.45)],
+        "sample": 353, "wins": 287, "hit_percent": 81.3,
+        "why": "3,5 Alt ≤1.30 ve 2,5 Alt ≤1.45 olan 353 maçta 287 kez 3,5 alt geldi.",
+    },
+    {
+        "id": "u35_nobtts",
+        "selection": "3,5 Alt",
+        "need": [("u35", 1.01, 1.28), ("nobtts", 1.01, 1.55)],
+        "sample": 379, "wins": 307, "hit_percent": 81.0,
+        "why": "3,5 Alt ≤1.28 ve KG Yok ≤1.55 olan 379 maçta 307 kez 3,5 alt geldi.",
+    },
+    {
+        "id": "ms2_short",
+        "selection": "MS 2",
+        "need": [("a", 1.01, 1.25)],
+        "sample": 220, "wins": 176, "hit_percent": 80.0,
+        "why": "MS 2 oranı ≤1.25 olan 220 maçta 176 deplasman kazandı.",
+    },
+    {
+        "id": "iyu15_u25",
+        "selection": "İY 1,5 Alt",
+        "need": [("iyu15", 1.01, 1.28), ("u25", 1.01, 1.45)],
+        "sample": 285, "wins": 224, "hit_percent": 78.6,
+        "why": "İY 1,5 Alt ≤1.28 ve 2,5 Alt ≤1.45 olan 285 maçta 224 kez İY 0-0 veya 1 gol.",
+    },
+    {
+        "id": "u35_tight",
+        "selection": "3,5 Alt",
+        "need": [("u35", 1.01, 1.25)],
+        "sample": 2880, "wins": 2157, "hit_percent": 74.9,
+        "why": "3,5 Alt ≤1.25 olan 2880 maçta 2157 kez 3 gol veya daha az.",
+    },
+    {
+        "id": "iyu15_tight",
+        "selection": "İY 1,5 Alt",
+        "need": [("iyu15", 1.01, 1.25)],
+        "sample": 723, "wins": 540, "hit_percent": 74.7,
+        "why": "İY 1,5 Alt ≤1.25 olan 723 maçta 540 kez ilk yarı 0-1 gol.",
+    },
+    {
+        "id": "ms1_short",
+        "selection": "MS 1",
+        "need": [("h", 1.01, 1.25)],
+        "sample": 671, "wins": 499, "hit_percent": 74.4,
+        "why": "MS 1 ≤1.25 olan 671 maçta 499 ev kazandı.",
+    },
+    {
+        "id": "ms1_nobtts",
+        "selection": "MS 1",
+        "need": [("h", 1.01, 1.45), ("nobtts", 1.01, 1.50)],
+        "sample": 261, "wins": 192, "hit_percent": 73.6,
+        "why": "MS 1 ≤1.45 ve KG Yok ≤1.50 olan 261 maçta 192 ev kazandı.",
+    },
+]
+LH_URL = "https://eagle-sapphire-quiet-bold.grok.me/"
+
+
+def empirical_banko(q):
+    hit = []
+    miss = []
+    for rule in EMPIRICAL_RULES:
+        checks = []
+        ok = True
+        for key, lo, hi in rule["need"]:
+            v = q.get(key)
+            try:
+                v = float(v) if v is not None else None
+            except Exception:
+                v = None
+            passed = v is not None and lo <= v <= hi
+            if not passed:
+                ok = False
+            checks.append({"key": key, "odds": v, "range": [lo, hi], "passed": passed})
+        row = {
+            "id": rule["id"],
+            "selection": rule["selection"],
+            "hit_percent": rule["hit_percent"],
+            "sample": rule["sample"],
+            "wins": rule["wins"],
+            "why": rule["why"],
+            "checks": checks,
+            "match": ok,
+        }
+        (hit if ok else miss).append(row)
+    hit.sort(key=lambda x: (-x["hit_percent"], -x["sample"]))
+    status = "BANKO ADAYI" if hit else "BANKO YOK"
+    if hit and hit[0]["hit_percent"] >= 78:
+        status = "BANKO GÜÇLÜ"
+    return {
+        "status": status,
+        "matched": hit,
+        "unmatched": miss,
+        "source": "history.json sonuçlu maçlar, 2026-05 … 2026-09",
+        "lh_url": LH_URL,
+        "note": "Kural geçmiş sıklıktır; gelecek maçı garanti etmez. n küçük olan kural daha kırılgan.",
+    }
+
+
 class OddsReq(BaseModel):
     odds: dict[str, float | None]
     tolerance: float = Field(0.05, ge=0, le=5)
@@ -417,7 +600,7 @@ def meta():
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "markets": MARKETS,
-        "version": "4.9.4",
+        "version": "5.0.0",
         "warning": HISTORY_WARNING,
         "rule": "Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır.",
     }
@@ -650,7 +833,7 @@ def match_link(req: LinkReq):
 def selftest():
     return {
         "ok": True,
-        "version": "4.9.4",
+        "version": "5.0.0",
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "endpoints": ["/api/match-link", "/api/odds", "/api/exact-odds", "/api/plus6"],
@@ -676,6 +859,7 @@ def odds_scan(req: OddsReq):
     s = stats(matches)
     prob = probability_engine(q)
     banko = banko_engine(prob)
+    ebanko = empirical_banko(q)
     relationships = relationship_engine(matches)
     comparison = market_comparison(s, prob)
     sensitivity = []
@@ -762,6 +946,7 @@ def odds_scan(req: OddsReq):
         "stats": s,
         "probability_engine": prob,
         "banko": banko,
+        "empirical_banko": ebanko,
         "market_comparison": comparison,
         "relationships": relationships,
         "breakdown": breakdown,
@@ -771,6 +956,11 @@ def odds_scan(req: OddsReq):
         "counterexamples": losses[:12],
         "why": insights(s, prob, len(matches)),
         "expected_goals": expected_goals(q),
+        "poisson": poisson_board(
+            expected_goals(q),
+            home_share=(s["avg_home_goals"] / s["avg_goals"]) if (s.get("avg_goals") and s.get("avg_home_goals")) else 0.55,
+        ),
+        "late_goal": late_goal_profile(matches),
         "signals": signal_engine(s, prob, s.get("sample_ft") or 0, q),
         "matches": matches[: req.limit],
     }
