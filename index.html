@@ -6,79 +6,102 @@
 <title>ATASU</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --ink:#0a0b0d; --paper:#111318; --line:rgba(232,210,160,.14);
-  --gold:#e8d2a0; --gold2:#c4a46a; --fog:#9aa09a; --snow:#f4efe4;
-  --go:#c8f5c0; --stop:#ff9aa4;
+  --ink:#07080a; --void:#0c0d10; --paper:#101217;
+  --line:rgba(214,186,132,.16); --line2:rgba(214,186,132,.28);
+  --gold:#e4c98a; --gold2:#b8945a; --fog:#8e918b; --snow:#f6f1e6;
+  --go:#b7e4b0; --stop:#e89aa3;
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--ink);color:var(--snow);font-family:Manrope,system-ui,sans-serif}
 body{
   min-height:100vh;
   background:
-    linear-gradient(180deg, rgba(232,210,160,.05), transparent 28%),
-    radial-gradient(ellipse 80% 40% at 50% -10%, rgba(196,164,106,.12), transparent 50%),
-    var(--ink);
+    radial-gradient(ellipse 70% 36% at 50% -8%, rgba(184,148,90,.16), transparent 52%),
+    linear-gradient(180deg, #0e1014 0%, var(--ink) 28%);
 }
-.frame{max-width:1120px;margin:0 auto;padding:0 22px 80px}
-.mast{padding:28px 0 0;border-bottom:1px solid var(--line)}
-.word{font-family:"Cormorant Garamond",Georgia,serif;font-size:42px;line-height:.9;margin:0;font-weight:500;letter-spacing:-.02em;color:var(--gold)}
-.word i{font-style:italic;color:var(--snow);font-weight:500}
-.meta{font:400 11px/1.4 "IBM Plex Mono",monospace;color:var(--fog);letter-spacing:.08em;text-transform:uppercase;margin-top:10px}
-.tabs{display:flex;gap:0;margin-top:22px}
-.tab{background:none;border:0;border-bottom:1px solid transparent;color:var(--fog);padding:12px 16px 14px;font:500 12px Manrope;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
+.frame{max-width:1080px;margin:0 auto;padding:0 22px 96px}
+.mast{
+  position:sticky;top:0;z-index:20;
+  padding:22px 0 0;
+  background:linear-gradient(180deg, rgba(7,8,10,.96) 70%, rgba(7,8,10,.72));
+  backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--line);
+}
+.word{font-family:"Cormorant Garamond",Georgia,serif;font-size:40px;line-height:.92;margin:0;font-weight:500;letter-spacing:.04em;color:var(--gold)}
+.word span{font-weight:600;letter-spacing:.12em}
+.word i{font-style:italic;color:var(--snow);font-weight:500;letter-spacing:0;margin-left:8px;opacity:.88}
+.meta{font:400 10px/1.4 "IBM Plex Mono",monospace;color:var(--fog);letter-spacing:.14em;text-transform:uppercase;margin-top:8px}
+.tabs{display:flex;gap:2px;margin-top:18px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{
+  background:transparent;border:0;border-bottom:1px solid transparent;
+  color:var(--fog);padding:11px 14px 13px;white-space:nowrap;
+  font:500 11px Manrope;letter-spacing:.16em;text-transform:uppercase;cursor:pointer
+}
 .tab.on{color:var(--gold);border-bottom-color:var(--gold)}
-.stage{padding-top:28px}
-.card{background:linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.01));border:1px solid var(--line);padding:22px}
-.kicker{font:500 11px/1 "IBM Plex Mono",monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--gold2);margin:0 0 14px}
-label{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--fog);margin:12px 0 6px}
-textarea,input{width:100%;background:#0c0d10;border:1px solid var(--line);color:var(--snow);border-radius:0;padding:12px 14px;font:13px/1.5 "IBM Plex Mono",monospace}
-textarea{min-height:88px;resize:vertical}
-textarea:focus,input:focus{outline:none;border-color:var(--gold2)}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.btns{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
-button{border:0;padding:12px 18px;font:600 12px Manrope;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
-.g{background:var(--gold);color:#16120a}
-.b{background:transparent;color:var(--snow);border:1px solid var(--line)}
-.r{background:transparent;color:var(--stop);border:1px solid rgba(255,154,164,.25)}
-.kpi{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);margin:16px 0;border:1px solid var(--line)}
-.k{background:#111318;padding:14px 16px}
-.k span{display:block;font:400 10px/1 "IBM Plex Mono",monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--fog)}
-.k b{display:block;margin-top:8px;font:500 26px/1 "Cormorant Garamond",serif;color:var(--snow)}
-.hint{font-size:12px;color:var(--fog);line-height:1.5;margin:0 0 12px}
-.ok{color:var(--go)}.no{color:var(--stop)}.mu{color:var(--fog);font-size:13px;line-height:1.55}
-.hidden{display:none}
-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
-th{color:var(--fog);font:500 10px/1 Manrope;letter-spacing:.1em;text-transform:uppercase;text-align:left;padding:10px 8px;border-bottom:1px solid var(--line)}
-td{padding:10px 8px;border-bottom:1px solid rgba(232,210,160,.08);font-family:"IBM Plex Mono",monospace;font-size:12px}
-.verdict{padding:18px 18px 16px;margin:16px 0 8px;border:1px solid var(--line)}
-.verdict.go{background:linear-gradient(135deg, rgba(200,245,192,.08), transparent 55%);border-color:rgba(200,245,192,.28)}
-.v-title{font:500 26px/1.15 "Cormorant Garamond",serif;margin:6px 0 8px}
-.v-sub{color:var(--fog);font-size:13.5px;line-height:1.55;white-space:pre-wrap}
-.yorum{
-  font:400 14.5px/1.65 Manrope,system-ui,sans-serif;
-  white-space:pre-wrap;
-  color:var(--snow);
-  margin:0;
+.stage{padding-top:26px}
+.card{
+  background:
+    linear-gradient(165deg, rgba(228,201,138,.05), transparent 42%),
+    var(--paper);
+  border:1px solid var(--line);
+  padding:26px 24px 28px;
+  box-shadow:0 24px 60px rgba(0,0,0,.35);
 }
+.kicker{font:500 10px/1 "IBM Plex Mono",monospace;letter-spacing:.2em;text-transform:uppercase;color:var(--gold2);margin:0 0 16px}
+label{display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--fog);margin:14px 0 7px}
+textarea,input{
+  width:100%;background:var(--void);border:1px solid var(--line);color:var(--snow);
+  border-radius:0;padding:13px 14px;font:13px/1.5 "IBM Plex Mono",monospace
+}
+textarea{min-height:88px;resize:vertical}
+textarea:focus,input:focus{outline:none;border-color:var(--gold2);box-shadow:0 0 0 1px rgba(184,148,90,.25)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.btns{display:flex;gap:8px;margin-top:20px;flex-wrap:wrap}
+button{border:0;padding:12px 18px;font:600 11px Manrope;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+.g{background:var(--gold);color:#16120a}
+.g:hover{background:#f0d7a4}
+.b{background:transparent;color:var(--snow);border:1px solid var(--line)}
+.b:hover{border-color:var(--line2);color:var(--gold)}
+.r{background:transparent;color:var(--stop);border:1px solid rgba(232,154,163,.28)}
+.kpi{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);margin:18px 0;border:1px solid var(--line)}
+.k{background:var(--void);padding:16px 16px 14px}
+.k span{display:block;font:400 9px/1 "IBM Plex Mono",monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--fog)}
+.k b{display:block;margin-top:10px;font:500 28px/1 "Cormorant Garamond",serif;color:var(--gold)}
+.hint{font-size:12px;color:var(--fog);line-height:1.55;margin:0 0 14px}
+.ok{color:var(--go)}.no{color:var(--stop)}.mu{color:var(--fog);font-size:13px;line-height:1.6}
+.hidden{display:none}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+th{color:var(--fog);font:500 9px/1 Manrope;letter-spacing:.14em;text-transform:uppercase;text-align:left;padding:11px 8px;border-bottom:1px solid var(--line)}
+td{padding:11px 8px;border-bottom:1px solid rgba(214,186,132,.08);font-family:"IBM Plex Mono",monospace;font-size:12px}
+tr:hover td{background:rgba(228,201,138,.04)}
+.verdict{padding:20px 20px 18px;margin:18px 0 10px;border:1px solid var(--line);background:rgba(255,255,255,.015)}
+.verdict.go{background:linear-gradient(135deg, rgba(183,228,176,.07), transparent 60%);border-color:rgba(183,228,176,.22)}
+.v-title{font:500 28px/1.12 "Cormorant Garamond",serif;margin:6px 0 8px;letter-spacing:.01em}
+.v-sub{color:var(--fog);font-size:13px;line-height:1.6;white-space:pre-wrap}
+.yorum{font:400 14.5px/1.7 Manrope,system-ui,sans-serif;white-space:pre-wrap;color:var(--snow);margin:0}
 .tercih{
-  margin-top:14px;
-  padding:14px 16px;
+  margin-top:16px;padding:16px 18px;
   border:1px solid var(--gold2);
-  background:rgba(196,164,106,.08);
+  background:linear-gradient(180deg, rgba(184,148,90,.12), rgba(184,148,90,.04));
 }
 .tercih .kicker{margin-bottom:8px}
-.tercih p{margin:0;font:500 15px/1.5 Manrope;color:#f3e6b8;white-space:pre-wrap}
-.chipwrap{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px}
-.chip{border:1px solid var(--line);padding:8px 10px;font:12px "IBM Plex Mono",monospace}
-.chip em{display:block;font-style:normal;color:var(--fog);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+.tercih p{margin:0;font:500 15px/1.55 Manrope;color:#f4e6c0;white-space:pre-wrap}
+.chipwrap{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0 4px}
+.chip{border:1px solid var(--line);padding:8px 11px;font:12px "IBM Plex Mono",monospace;background:var(--void)}
+.chip em{display:block;font-style:normal;color:var(--fog);font-size:9px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:3px}
+#bultenTablo .pick{padding:8px 12px;font-size:10px}
 @media(max-width:700px){
-  .word{font-size:34px}
+  .word{font-size:32px}
   .row{grid-template-columns:1fr}
   .frame{padding-left:16px;padding-right:16px}
-  .tab{padding-left:10px;padding-right:10px;letter-spacing:.06em}
+  .tab{padding-left:11px;padding-right:11px;letter-spacing:.1em}
+  .card{padding:20px 16px}
+  .k b{font-size:24px}
 }
 </style>
 </head>
@@ -90,7 +113,9 @@ td{padding:10px 8px;border-bottom:1px solid rgba(232,210,160,.08);font-family:"I
       <div class="meta" id="metaLine">Yükleniyor</div>
     </div>
     <nav class="tabs">
-      <button class="tab on" data-t="model">Model</button>
+      <button class="tab on" data-t="model">Rapor</button>
+      <button class="tab" data-t="bulten">Bülten</button>
+      <button class="tab" data-t="detay">Detay</button>
       <button class="tab" data-t="exact">Excel</button>
       <button class="tab" data-t="p6">+6</button>
     </nav>
@@ -115,8 +140,16 @@ td{padding:10px 8px;border-bottom:1px solid rgba(232,210,160,.08);font-family:"I
       <button class="r" onclick="clearAll()">Sil</button>
     </div>
     <p class="hint" id="updHint">Canlı tablo 25 dk cache. Güncelle: cache sil + biten maçları history’e yaz. Kod zip’i kendi değiştirmez.</p>
-    <div id="bulletinBox"></div>
     <div id="outModel"></div>
+  </section>
+  <section id="panel-bulten" class="card hidden">
+    <p class="kicker">Günlük maç bülteni</p>
+    <p class="hint">Satırın Tara’sına bas. Rapor ayrı sekmede açılır, liste burada kalır.</p>
+    <div id="bulletinBox"></div>
+  </section>
+  <section id="panel-detay" class="card hidden">
+    <p class="kicker">Tablo · form · açık sıra</p>
+    <div id="outDetay" class="mu">Önce Rapor’da Tara.</div>
   </section>
   <section id="panel-exact" class="card hidden">
     <p class="kicker">Excel · kalıp + model + para</p>
@@ -131,12 +164,13 @@ td{padding:10px 8px;border-bottom:1px solid rgba(232,210,160,.08);font-family:"I
 </div>
 <script>
 const $ = id => document.getElementById(id);
+const TABS = ['model','bulten','detay','exact','p6'];
+function showTab(id){
+  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on', b.dataset.t===id));
+  TABS.forEach(t=>$('panel-'+t).classList.toggle('hidden', t!==id));
+}
 document.querySelectorAll('.tab').forEach(btn=>{
-  btn.onclick=()=>{
-    document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
-    btn.classList.add('on');
-    ['model','exact','p6'].forEach(t=>$('panel-'+t).classList.toggle('hidden', t!==btn.dataset.t));
-  };
+  btn.onclick=()=>showTab(btn.dataset.t);
 });
 fetch('/api/meta').then(r=>r.json()).then(m=>{
   $('metaLine').textContent = m.history_rows + ' kayıt · ' + m.completed_rows + ' sonuçlu · v' + m.version + (m.warning? ' · '+m.warning:'');
@@ -207,6 +241,7 @@ async function loadBulletin(){
   try{
     const today = new Date();
     const iso = today.toISOString().slice(0,10);
+    showTab('bulten');
     const r = await fetch('/api/bulletin?date='+iso);
     const j = await r.json();
     if(!r.ok) throw new Error(j.detail||'bülten yok');
@@ -229,11 +264,11 @@ function renderBulletin(rows, label){
   window._bulten = rows;
   window._bultenSecim = null;
   let html = '<p class="hint">'+rows.length+' maç · '+esc(label)+' · satırın Tara yazısına bas</p>';
-  html += '<table id="bultenTablo"><tr><th>Saat</th><th>Lig</th><th>Maç</th><th>1</th><th>X</th><th>2</th><th></th></tr>';
+  html += '<div class="scroll"><table id="bultenTablo"><tr><th>Saat</th><th>Lig</th><th>Maç</th><th>1</th><th>X</th><th>2</th><th></th></tr>';
   rows.forEach((m,i)=>{
     html += '<tr data-i="'+i+'"><td>'+esc(m.time||'')+'</td><td>'+esc(m.league||'')+'</td><td>'+esc(m.home||'')+' — '+esc(m.away||'')+'</td><td>'+(m.h||'')+'</td><td>'+(m.d||'')+'</td><td>'+(m.a||'')+'</td><td><button type="button" class="g pick" data-i="'+i+'">Tara</button></td></tr>';
   });
-  html += '</table>';
+  html += '</table></div>';
   box.innerHTML = html;
   box.onclick = function(ev){
     const btn = ev.target.closest('.pick, tr[data-i]');
@@ -255,8 +290,10 @@ async function pickBulletin(m){
     const j = await r.json();
     if(!r.ok) throw new Error(j.detail||'oran yok');
     await analyzeText(j.text||'', j.title||$('lhQ').value);
+    showTab('model');
   }catch(e){
     $('outModel').innerHTML = '<p class="no">'+(e.message||e)+'</p>';
+    showTab('model');
   }
 }
 function tableMatches(rows){
@@ -322,10 +359,16 @@ async function analyzeText(text, title){
   html += '<div class="k"><span>KG geldi</span><b>'+(s['KG Var']!=null?s['KG Var']+'%':'—')+'</b></div>';
   html += '<div class="k"><span>2. yarı gol</span><b>'+(s['2.Y 1+ Gol']!=null?s['2.Y 1+ Gol']+'%':'—')+'</b></div></div>';
   html += '<div class="mu">Okunan oran (yalnızca açık iddaa)</div>'+chips(odds);
+  if(parts.tercih){
+    html += '<div class="tercih"><div class="kicker">Tercih · yalnızca açık iddaa</div><p>'+esc(parts.tercih)+'</p></div>';
+  }
+  $('outModel').innerHTML = html;
+
+  let det = '';
   const st = brief.standing||{};
   if(st.ok){
-    html += '<div class="verdict"><div class="kicker">Maçkolik puan durumu</div>';
-    html += '<p class="v-sub">'+esc(st.season_label||'')+' · sezon '+esc(st.season_id||'')+'</p>';
+    det += '<div class="verdict"><div class="kicker">Maçkolik puan durumu</div>';
+    det += '<p class="v-sub">'+esc(st.season_label||'')+' · sezon '+esc(st.season_id||'')+'</p>';
     function rowLine(r, tag){
       if(!r) return '';
       const fm = (r.form&&r.form.all)? ' · form '+r.form.all : '';
@@ -340,21 +383,19 @@ async function analyzeText(text, title){
     if(an.home_opta) extra += 'ev şut '+an.home_opta.shots_pg+' isabet '+an.home_opta.sot_pg+' TSO %'+an.home_opta.possession+' CS '+an.home_opta.clean_sheets+'\n';
     if(an.away_opta) extra += 'dep şut '+an.away_opta.shots_pg+' isabet '+an.away_opta.sot_pg+' TSO %'+an.away_opta.possession+' CS '+an.away_opta.clean_sheets+'\n';
     if(an.flags&&an.flags.length) extra += 'okuma: '+an.flags.join(' · ');
-    html += '<p class="yorum">'+esc(rowLine(st.home_row,'Ev'))+'\n'+esc(rowLine(st.away_row,'Dep'))+(extra?'\n'+esc(extra.trim()):'')+'</p></div>';
+    det += '<p class="yorum">'+esc(rowLine(st.home_row,'Ev'))+'\n'+esc(rowLine(st.away_row,'Dep'))+(extra?'\n'+esc(extra.trim()):'')+'</p></div>';
   } else if(st.note){
-    html += '<p class="mu">Puan durumu: '+esc(st.note)+'</p>';
+    det += '<p class="mu">Puan durumu: '+esc(st.note)+'</p>';
   }
   const picks = brief.open_picks||[];
   if(picks.length){
-    html += '<div class="mu">Açık piyasa sıralaması (kapalı hatta bakılmaz)</div>';
+    det += '<div class="mu">Açık piyasa sıralaması (kapalı hatta bakılmaz)</div>';
     picks.slice(0,6).forEach(p=>{
-      html += '<div class="chip">'+esc(p.name)+' '+p.odds+(p.ev!=null?' · EV '+p.ev:'')+(p.stand_note?' · '+esc(p.stand_note):'')+'</div>';
+      det += '<div class="chip">'+esc(p.name)+' '+p.odds+(p.ev!=null?' · EV '+p.ev:'')+(p.stand_note?' · '+esc(p.stand_note):'')+'</div>';
     });
   }
-  if(parts.tercih){
-    html += '<div class="tercih"><div class="kicker">Tercih · yalnızca açık iddaa</div><p>'+esc(parts.tercih)+'</p></div>';
-  }
-  $('outModel').innerHTML = html;
+  if(parts.yorum) det += '<p class="yorum" style="margin-top:14px">'+esc(parts.yorum)+'</p>';
+  $('outDetay').innerHTML = det || '<p class="mu">Detay yok.</p>';
 
   let ex = '<p class="yorum">'+esc(parts.yorum)+'</p>';
   if(parts.tercih) ex += '<div class="tercih"><div class="kicker">Tercih</div><p>'+esc(parts.tercih)+'</p></div>';
