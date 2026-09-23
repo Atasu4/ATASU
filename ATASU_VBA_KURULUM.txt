@@ -1,0 +1,20 @@
+ATASU Excel VBA otomasyon
+
+1. Excel aç, Alt+F11
+2. File > Import File > ATASU_Excel_Otomasyon.bas
+3. Makrolar:
+   ATASU_SayfaKur   -> ATASU sayfasını oluşturur
+   ATASU_AnalizEt   -> atasu.onrender.com/api/odds çağırır
+
+Adres: ATASU_URL sabiti (modülün başı)
+Hücreler:
+  B2 maç adı
+  B4 C4 D4 = MS 1 / X / 2
+  B5 C5 D5 E5 = u25 o25 u35 o35
+  B6 C6 = KG var / yok
+  B7 tolerans
+  B10 yorum
+  B29 tercih kutusu
+
+Not: Windows Excel. Mac'te WinHttp yok, orada çalışmaz.
+Render uyuyorsa ilk istek 30-40 sn sürebilir.
