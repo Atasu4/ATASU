@@ -24,7 +24,6 @@ body{
 }
 .frame{max-width:1120px;margin:0 auto;padding:0 22px 80px}
 .mast{padding:28px 0 0;border-bottom:1px solid var(--line)}
-.mast-row{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .word{font-family:"Cormorant Garamond",Georgia,serif;font-size:42px;line-height:.9;margin:0;font-weight:500;letter-spacing:-.02em;color:var(--gold)}
 .word i{font-style:italic;color:var(--snow);font-weight:500}
 .meta{font:400 11px/1.4 "IBM Plex Mono",monospace;color:var(--fog);letter-spacing:.08em;text-transform:uppercase;margin-top:10px}
@@ -44,20 +43,37 @@ button{border:0;padding:12px 18px;font:600 12px Manrope;letter-spacing:.08em;tex
 .g{background:var(--gold);color:#16120a}
 .b{background:transparent;color:var(--snow);border:1px solid var(--line)}
 .r{background:transparent;color:var(--stop);border:1px solid rgba(255,154,164,.25)}
-.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;background:var(--line);margin:18px 0;border:1px solid var(--line)}
+.kpi{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);margin:16px 0;border:1px solid var(--line)}
 .k{background:#111318;padding:14px 16px}
 .k span{display:block;font:400 10px/1 "IBM Plex Mono",monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--fog)}
 .k b{display:block;margin-top:8px;font:500 26px/1 "Cormorant Garamond",serif;color:var(--snow)}
-.ok{color:var(--go)}.no{color:var(--stop)}.mu{color:var(--fog);font-size:13px}
+.hint{font-size:12px;color:var(--fog);line-height:1.5;margin:0 0 12px}
+.ok{color:var(--go)}.no{color:var(--stop)}.mu{color:var(--fog);font-size:13px;line-height:1.55}
 .hidden{display:none}
 table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
 th{color:var(--fog);font:500 10px/1 Manrope;letter-spacing:.1em;text-transform:uppercase;text-align:left;padding:10px 8px;border-bottom:1px solid var(--line)}
 td{padding:10px 8px;border-bottom:1px solid rgba(232,210,160,.08);font-family:"IBM Plex Mono",monospace;font-size:12px}
-.verdict{padding:22px 22px 20px;margin:18px 0 8px;border:1px solid var(--line)}
+.verdict{padding:18px 18px 16px;margin:16px 0 8px;border:1px solid var(--line)}
 .verdict.go{background:linear-gradient(135deg, rgba(200,245,192,.08), transparent 55%);border-color:rgba(200,245,192,.28)}
-.v-title{font:500 28px/1.15 "Cormorant Garamond",serif;margin:8px 0 10px}
-.v-sub{color:var(--fog);font-size:13.5px;line-height:1.55}
-iframe{width:100%;height:640px;border:1px solid var(--line);margin-top:14px;background:#000}
+.v-title{font:500 26px/1.15 "Cormorant Garamond",serif;margin:6px 0 8px}
+.v-sub{color:var(--fog);font-size:13.5px;line-height:1.55;white-space:pre-wrap}
+.yorum{
+  font:400 14.5px/1.65 Manrope,system-ui,sans-serif;
+  white-space:pre-wrap;
+  color:var(--snow);
+  margin:0;
+}
+.tercih{
+  margin-top:14px;
+  padding:14px 16px;
+  border:1px solid var(--gold2);
+  background:rgba(196,164,106,.08);
+}
+.tercih .kicker{margin-bottom:8px}
+.tercih p{margin:0;font:500 15px/1.5 Manrope;color:#f3e6b8;white-space:pre-wrap}
+.chipwrap{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px}
+.chip{border:1px solid var(--line);padding:8px 10px;font:12px "IBM Plex Mono",monospace}
+.chip em{display:block;font-style:normal;color:var(--fog);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
 @media(max-width:700px){
   .word{font-size:34px}
   .row{grid-template-columns:1fr}
@@ -69,17 +85,14 @@ iframe{width:100%;height:640px;border:1px solid var(--line);margin-top:14px;back
 <body>
 <div class="frame">
   <header class="mast">
-    <div class="mast-row">
-      <div>
-        <h1 class="word">ATA<span>SU</span> <i>Intelligence</i></h1>
-        <div class="meta" id="metaLine">Yükleniyor</div>
-      </div>
+    <div>
+      <h1 class="word">ATA<span>SU</span> <i>Intelligence</i></h1>
+      <div class="meta" id="metaLine">Yükleniyor</div>
     </div>
     <nav class="tabs">
       <button class="tab on" data-t="model">Model</button>
       <button class="tab" data-t="exact">Excel</button>
       <button class="tab" data-t="p6">+6</button>
-      <button class="tab" data-t="lh">LH</button>
     </nav>
   </header>
   <main class="stage">
@@ -92,7 +105,7 @@ iframe{width:100%;height:640px;border:1px solid var(--line);margin-top:14px;back
       <div><label>Tolerans</label><input id="tol" type="number" step="0.01" value="0.05"></div>
     </div>
     <div class="row">
-      <div><label>Limit</label><input id="lim" type="number" value="200"></div>
+      <div><label>Limit</label><input id="lim" type="number" value="80"></div>
       <div><label>Maç adı</label><input id="lhQ" placeholder="Ev - Dep"></div>
     </div>
     <div class="btns">
@@ -102,7 +115,7 @@ iframe{width:100%;height:640px;border:1px solid var(--line);margin-top:14px;back
     <div id="outModel"></div>
   </section>
   <section id="panel-exact" class="card hidden">
-    <p class="kicker">Excel birebir + eşleşen maçlar</p>
+    <p class="kicker">Excel · kalıp + model + para</p>
     <div id="outExact" class="mu">Önce Model’de Tara.</div>
   </section>
   <section id="panel-p6" class="card hidden">
@@ -110,24 +123,19 @@ iframe{width:100%;height:640px;border:1px solid var(--line);margin-top:14px;back
     <p class="mu">2,5Ü 1.20–1.28 · 3,5Ü 1.66–1.89 · 4,5Ü 2.64–3.14 · KG Var 1.22–1.87</p>
     <div id="outP6" class="mu">Aynı linkten dolar.</div>
   </section>
-  <section id="panel-lh" class="card hidden">
-    <p class="kicker">LH Bet Predict</p>
-    <iframe id="lhFrame" title="LH Bet Predict" src="https://eagle-sapphire-quiet-bold.grok.me/"></iframe>
-  </section>
   </main>
 </div>
 <script>
 const $ = id => document.getElementById(id);
-const LH = 'https://eagle-sapphire-quiet-bold.grok.me/';
 document.querySelectorAll('.tab').forEach(btn=>{
   btn.onclick=()=>{
     document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
     btn.classList.add('on');
-    ['model','exact','p6','lh'].forEach(t=>$('panel-'+t).classList.toggle('hidden', t!==btn.dataset.t));
+    ['model','exact','p6'].forEach(t=>$('panel-'+t).classList.toggle('hidden', t!==btn.dataset.t));
   };
 });
 fetch('/api/meta').then(r=>r.json()).then(m=>{
-  $('metaLine').textContent = m.history_rows + ' kayit · ' + m.completed_rows + ' sonuclu · v' + m.version + (m.warning? ' · '+m.warning:'');
+  $('metaLine').textContent = m.history_rows + ' kayıt · ' + m.completed_rows + ' sonuçlu · v' + m.version + (m.warning? ' · '+m.warning:'');
 }).catch(()=>{$('metaLine').textContent='API yok — uvicorn app:app --port 8000';});
 
 function parseBulletin(text){
@@ -168,7 +176,22 @@ function parseBulletin(text){
   return odds;
 }
 function chips(odds){
-  return Object.entries(odds).map(([k,v])=>'<span class="k" style="display:inline-block;margin:3px">'+k+': <b>'+v+'</b></span>').join(' ');
+  const names = {h:'MS 1',d:'MS X',a:'MS 2',u25:'2.5 alt',o25:'2.5 üst',u35:'3.5 alt',o35:'3.5 üst',btts:'KG var',nobtts:'KG yok',iyu15:'İY 1.5 alt',iyo15:'İY 1.5 üst',g6:'6+'};
+  return '<div class="chipwrap">'+Object.entries(odds).map(([k,v])=>'<span class="chip"><em>'+(names[k]||k)+'</em>'+v+'</span>').join('')+'</div>';
+}
+function splitYorum(raw){
+  raw = raw || '';
+  let tercih = '';
+  const m = raw.match(/\[\[ATASU_TERCIH\]\]([\s\S]*?)\[\[\/ATASU_TERCIH\]\]/);
+  if(m){
+    tercih = m[1].trim();
+    raw = raw.replace(m[0], '').trim();
+  }
+  raw = raw.replace(/\[\[\/?ATASU_TERCIH\]\]/g,'').trim();
+  return {yorum: raw, tercih};
+}
+function esc(s){
+  return String(s||'').replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 }
 function clearAll(){
   ['outModel','outExact','outP6'].forEach(id=>$(id).innerHTML='');
@@ -177,17 +200,10 @@ function clearAll(){
 function tableMatches(rows){
   if(!rows||!rows.length) return '<p class="mu">Bu oranlara uyan geçmiş maç yok.</p>';
   let body = '';
-  rows.forEach(r=>{
-    body += '<tr><td>'+(r.date||'')+'</td><td>'+(r.league||'')+'</td><td>'+(r.home||'')+' — '+(r.away||'')+'</td><td>'+(r.ht||'—')+'</td><td>'+(r.ft||'—')+'</td><td>'+(r._matched_odds||0)+'/'+(r._compared_odds||0)+'</td></tr>';
+  rows.slice(0,40).forEach(r=>{
+    body += '<tr><td>'+(r.date||'')+'</td><td>'+(r.league||'')+'</td><td>'+(r.home||'')+' — '+(r.away||'')+'</td><td>'+(r.ht||'—')+'</td><td>'+(r.ft||'—')+'</td></tr>';
   });
-  return '<table><tr><th>Tarih</th><th>Lig</th><th>Maç</th><th>İY</th><th>MS</th><th>Tutan</th></tr>'+body+'</table>';
-}
-function pctLine(s, n, keys){
-  return keys.map(([lab,k])=>{
-    const v=s[k];
-    if(typeof v!=='number') return '';
-    return lab+' '+Math.round(n*v/100)+'/'+n+' (%'+v+')';
-  }).filter(Boolean).join(' · ');
+  return '<table><tr><th>Tarih</th><th>Lig</th><th>Maç</th><th>İY</th><th>MS</th></tr>'+body+'</table>';
 }
 
 async function runAll(){
@@ -207,10 +223,11 @@ async function runAll(){
   }
   const odds = parseBulletin(text);
   if(Object.keys(odds).length<2){
-    $('outModel').innerHTML = '<p class="no">Linkten en az 2 oran çıkmadı.</p><pre class="mu">'+text.slice(0,800)+'</pre>';
+    $('outModel').innerHTML = '<p class="no">Linkten en az 2 oran çıkmadı.</p>';
     return;
   }
-  const body = {odds, tolerance: Number($('tol').value||0.05), league:$('league').value, limit:Number($('lim').value||200), title: title||$('lhQ').value||''};
+  const matchTitle = ($('lhQ').value||title||'').trim();
+  const body = {odds, tolerance: Number($('tol').value||0.05), league:$('league').value, limit:Number($('lim').value||80), title: matchTitle};
   const [briefR, exactR, p6R] = await Promise.all([
     fetch('/api/brief',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),
     fetch('/api/exact-odds',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({odds,tolerance:0})}),
@@ -225,31 +242,28 @@ async function runAll(){
   if(!briefR.ok){ $('outModel').innerHTML = '<p class="no">'+(brief.detail||'hata')+'</p>'; return; }
   const s = brief.stats||{};
   const n = brief.sample||0;
-  const go = n>=8;
-  let html = '<div class="verdict '+(go?'go':'')+'">';
+  const parts = splitYorum(brief.yorum||'');
+  let html = '<div class="verdict '+(n>=8?'go':'')+'">';
   html += '<div class="kicker">Kısa rapor</div>';
-  html += '<div class="v-title">'+(title||'Maç')+'</div>';
-  html += '<p class="v-sub">'+brief.title+' '+brief.text+'</p></div>';
-  html += '<div class="mu">Okunan oran</div>'+chips(odds);
+  html += '<div class="v-title">'+esc(title||'Maç')+'</div>';
+  html += '<p class="v-sub">'+esc(brief.text||brief.title||'')+'</p></div>';
+  html += '<p class="hint">Kutular oran değil. Benzer maçlarda o işin gelme yüzdesi.</p>';
   html += '<div class="kpi">';
-  html += '<div class="k"><span>Eşleşen</span><b>'+(brief.matched||0)+'</b></div>';
-  html += '<div class="k"><span>2,5 Üst</span><b>'+(s['2,5 Üst']??'—')+(s['2,5 Üst']!=null?'%':'')+'</b></div>';
-  html += '<div class="k"><span>KG Var</span><b>'+(s['KG Var']??'—')+(s['KG Var']!=null?'%':'')+'</b></div>';
-  html += '<div class="k"><span>2.Y 1+</span><b>'+(s['2.Y 1+ Gol']??'—')+(s['2.Y 1+ Gol']!=null?'%':'')+'</b></div></div>';
-  if(n){
-    html += '<p class="mu">'+pctLine(s,n,[['2,5 Üst','2,5 Üst'],['2,5 Alt','2,5 Alt'],['KG Var','KG Var'],['KG Yok','KG Yok'],['MS 1','MS 1'],['MS X','MS X'],['MS 2','MS 2']])+'</p>';
-    html += '<p class="mu">'+pctLine(s,n,[['İY 1','İY 1'],['İY X','İY X'],['İY 2','İY 2'],['2.Y 1+','2.Y 1+ Gol'],['2.Y 2+','2.Y 2+ Gol'],['İki yarı gol','Her iki yarı gol']])+'</p>';
+  html += '<div class="k"><span>Eşleşen maç</span><b>'+(brief.matched||0)+'</b></div>';
+  html += '<div class="k"><span>2,5 üst geldi</span><b>'+(s['2,5 Üst']!=null?s['2,5 Üst']+'%':'—')+'</b></div>';
+  html += '<div class="k"><span>KG geldi</span><b>'+(s['KG Var']!=null?s['KG Var']+'%':'—')+'</b></div>';
+  html += '<div class="k"><span>2. yarı gol</span><b>'+(s['2.Y 1+ Gol']!=null?s['2.Y 1+ Gol']+'%':'—')+'</b></div></div>';
+  html += '<div class="mu">Okunan oran</div>'+chips(odds);
+  if(parts.tercih){
+    html += '<div class="tercih"><div class="kicker">Tercih</div><p>'+esc(parts.tercih)+'</p></div>';
   }
   $('outModel').innerHTML = html;
 
-  let ex = '';
-  if(brief.yorum){
-    ex += '<pre class="mu" style="font-size:11px;line-height:1.45;white-space:pre-wrap;margin:0 0 12px">'+brief.yorum.replace(/</g,'')+'</pre>';
-  }
-  ex += chips(odds);
+  let ex = '<p class="yorum">'+esc(parts.yorum)+'</p>';
+  if(parts.tercih) ex += '<div class="tercih"><div class="kicker">Tercih</div><p>'+esc(parts.tercih)+'</p></div>';
+  ex += '<p class="hint" style="margin-top:18px">Birebir aynı oran + benzer maç listesi</p>';
   (exact.categories||[]).forEach(c=>{
-    const tops = (c.summary&&c.summary.top||[]).map(o=>o.name+': %'+o.percent).join(' · ');
-    ex += '<div class="k" style="margin:8px 0"><b>'+c.category+'</b> · '+c.status+' · '+c.matched+(tops?' · '+tops:'')+'</div>';
+    ex += '<div class="mu">'+esc(c.category)+' · '+esc(c.status)+' · '+c.matched+'</div>';
   });
   ex += tableMatches(brief.matches||[]);
   $('outExact').innerHTML = ex;
@@ -262,10 +276,6 @@ async function runAll(){
     phtml += '<div class="'+(x.match?'ok':'no')+'">'+(x.match?'OK':'X')+' '+x.name+' · '+val+' · ['+rng+']</div>';
   });
   $('outP6').innerHTML = phtml;
-
-  const q = ($('lhQ').value||title||'').trim();
-  const f = $('lhFrame');
-  if(f) f.src = q ? (LH+'?q='+encodeURIComponent(q)) : LH;
 }
 </script>
 </body>

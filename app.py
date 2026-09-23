@@ -1019,80 +1019,9 @@ class OddsReq(BaseModel):
 @app.get("/")
 def root():
     html = ROOT / "index.html"
-    if not html.exists():
-        raise HTTPException(404, "index.html yok")
-    raw = html.read_text(encoding="utf-8", errors="replace")
-    hide = """
-<style id="hide-lh">
-.atasu-yorum, [data-atasu-yorum]{
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
-  font-size: 15px !important;
-  line-height: 1.65 !important;
-  letter-spacing: .01em;
-  white-space: pre-wrap !important;
-}
-.atasu-tercih{
-  margin-top: 14px;
-  padding: 14px 16px;
-  border: 1px solid #c9a227;
-  border-radius: 12px;
-  background: rgba(201,162,39,.08);
-  color: #f3e6b8;
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
-  font-size: 16px !important;
-  line-height: 1.55 !important;
-  white-space: pre-wrap;
-}
-.atasu-tercih b{ color:#e8d48b; display:block; margin-bottom:6px; letter-spacing:.08em; font-size:12px; }
-</style>
-<script id="hide-lh-js">
-(function(){
-  function hideLH(){
-    const nodes = Array.from(document.querySelectorAll('button,a,[role="tab"],.tab,span,div'));
-    nodes.forEach(function(el){
-      const t = (el.textContent||'').replace(/\\s+/g,' ').trim();
-      if(!t) return;
-      if(/^(LH|LH BET|LH Bet)$/i.test(t) || t === 'LH'){
-        const tab = el.closest('[role="tab"],button,a') || el;
-        tab.style.display = 'none';
-      }
-    });
-  }
-  function styleYorum(){
-    const nodes = Array.from(document.querySelectorAll('pre,p,div,section,article,li'));
-    const box = nodes.find(function(el){
-      const t = el.innerText || '';
-      return t.indexOf('1) Geçmiş benzer') >= 0 && t.length > 180 && !el.dataset.atasuStyled;
-    });
-    if(!box) return;
-    box.dataset.atasuStyled = '1';
-    box.classList.add('atasu-yorum');
-    let raw = box.innerText || '';
-    const cut = raw.search(/\\n\\s*TERCİH\\s*\\n/);
-    if(cut >= 0){
-      const main = raw.slice(0, cut).trim();
-      const pref = raw.slice(cut).replace(/^\\s*TERCİH\\s*/,'').trim();
-      box.textContent = main;
-      if(pref && !box.parentElement.querySelector('.atasu-tercih')){
-        const card = document.createElement('div');
-        card.className = 'atasu-tercih';
-        card.innerHTML = '<b>TERCİH</b>' + pref.replace(/</g,'');
-        box.parentElement.insertBefore(card, box.nextSibling);
-      }
-    }
-  }
-  function tick(){ hideLH(); styleYorum(); }
-  tick();
-  new MutationObserver(tick).observe(document.documentElement,{childList:true,subtree:true});
-})();
-</script>
-"""
-    if "</body>" in raw.lower():
-        idx = raw.lower().rfind("</body>")
-        raw = raw[:idx] + hide + raw[idx:]
-    else:
-        raw += hide
-    return HTMLResponse(raw)
+    if html.exists():
+        return FileResponse(html)
+    raise HTTPException(404, "index.html yok")
 
 
 @app.get("/api/meta")
@@ -1887,8 +1816,9 @@ def compact_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, lh=
         tercih.append("Betfair teyidi yok, güven bir kademe düşük.")
     lines.append("Bu metin kanıt değil. Kalıp + model + para sentezi.")
     lines.append("")
-    lines.append("TERCİH")
-    lines.extend(tercih)
+    lines.append("[[ATASU_TERCIH]]")
+    lines.extend(tercih[:5])
+    lines.append("[[/ATASU_TERCIH]]")
     return "\n".join(lines)
 
 def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
@@ -1898,35 +1828,27 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
     n = s.get("sample_ft") or 0
     p6 = plus6_payload(q)
     lines = []
-    title = f"{n} eşleşen sonuçlu maç (±{tol}" + (f", {league}" if league.strip() else "") + ")."
+    title = f"{n} eşleşen sonuçlu maç"
     if n:
-        parts = []
-        for label, key in [
-            ("2,5 Üst", "2,5 Üst"), ("2,5 Alt", "2,5 Alt"),
-            ("KG Var", "KG Var"), ("KG Yok", "KG Yok"),
-            ("3,5 Üst", "3,5 Üst"), ("6+ Gol", "6+ Gol"),
-            ("MS 1", "MS 1"), ("MS X", "MS X"), ("MS 2", "MS 2"),
-        ]:
-            v = s.get(key)
-            if isinstance(v, (int, float)):
-                c = round(n * v / 100)
-                parts.append(f"{label} {c}/{n} (%{v})")
-        lines.append("Sonuç dağılımı: " + " · ".join(parts[:8]) + ".")
-        iy = []
-        for label in ["İY 1", "İY X", "İY 2", "2.Y 1+ Gol", "2.Y 2+ Gol", "Her iki yarı gol"]:
-            v = s.get(label)
-            if isinstance(v, (int, float)):
-                iy.append(f"{label} %{v}")
-        if iy:
-            lines.append("İY / yarı: " + " · ".join(iy) + ".")
-        if s.get("avg_goals") is not None:
-            lines.append(f"Ortalama gol {s['avg_goals']} (ev {s.get('avg_home_goals')} / dep {s.get('avg_away_goals')}).")
+        evp = s.get("MS 1")
+        o25 = s.get("2,5 Üst")
+        kg = s.get("KG Var")
+        avg = s.get("avg_goals")
+        bits = [f"n={n}"]
+        if evp is not None:
+            bits.append(f"ev %{evp:.0f}")
+        if o25 is not None:
+            bits.append(f"2.5 üst %{o25:.0f}")
+        if kg is not None:
+            bits.append(f"KG %{kg:.0f}")
+        if avg is not None:
+            bits.append(f"ort {avg}")
+        lines.append(" · ".join(bits) + ".")
         tops = s.get("top_scores") or []
         if tops:
-            lines.append("Sık skor: " + ", ".join(f"{t['score']} %{t['percent']}" for t in tops[:4]) + ".")
+            lines.append("Sık skor: " + ", ".join(t["score"] for t in tops[:3]) + ".")
     else:
         lines.append("Bu oran bandında sonuçlu geçmiş maç yok.")
-    lines.append(f"+6 bant uyumu %{p6['compatibility_percent']} ({p6['matched_rules']}/{p6['total_rules']}).")
     bw = betwatch_find(match_title, q=q)
     bw["signals"] = money_signals(s, bw.get("overlay"), q)
     lh = lh_style_engine(q, s)
