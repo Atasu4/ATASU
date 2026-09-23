@@ -1024,7 +1024,26 @@ def root():
     raw = html.read_text(encoding="utf-8", errors="replace")
     hide = """
 <style id="hide-lh">
-button, a, [role="tab"], .tab, .nav-item { }
+.atasu-yorum, [data-atasu-yorum]{
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  font-size: 15px !important;
+  line-height: 1.65 !important;
+  letter-spacing: .01em;
+  white-space: pre-wrap !important;
+}
+.atasu-tercih{
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid #c9a227;
+  border-radius: 12px;
+  background: rgba(201,162,39,.08);
+  color: #f3e6b8;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  font-size: 16px !important;
+  line-height: 1.55 !important;
+  white-space: pre-wrap;
+}
+.atasu-tercih b{ color:#e8d48b; display:block; margin-bottom:6px; letter-spacing:.08em; font-size:12px; }
 </style>
 <script id="hide-lh-js">
 (function(){
@@ -1036,14 +1055,35 @@ button, a, [role="tab"], .tab, .nav-item { }
       if(/^(LH|LH BET|LH Bet)$/i.test(t) || t === 'LH'){
         const tab = el.closest('[role="tab"],button,a') || el;
         tab.style.display = 'none';
-        if(tab.parentElement && tab.parentElement.children.length <= 5){
-          /* keep layout */
-        }
       }
     });
   }
-  hideLH();
-  new MutationObserver(hideLH).observe(document.documentElement,{childList:true,subtree:true});
+  function styleYorum(){
+    const nodes = Array.from(document.querySelectorAll('pre,p,div,section,article,li'));
+    const box = nodes.find(function(el){
+      const t = el.innerText || '';
+      return t.indexOf('1) Geçmiş benzer') >= 0 && t.length > 180 && !el.dataset.atasuStyled;
+    });
+    if(!box) return;
+    box.dataset.atasuStyled = '1';
+    box.classList.add('atasu-yorum');
+    let raw = box.innerText || '';
+    const cut = raw.search(/\\n\\s*TERCİH\\s*\\n/);
+    if(cut >= 0){
+      const main = raw.slice(0, cut).trim();
+      const pref = raw.slice(cut).replace(/^\\s*TERCİH\\s*/,'').trim();
+      box.textContent = main;
+      if(pref && !box.parentElement.querySelector('.atasu-tercih')){
+        const card = document.createElement('div');
+        card.className = 'atasu-tercih';
+        card.innerHTML = '<b>TERCİH</b>' + pref.replace(/</g,'');
+        box.parentElement.insertBefore(card, box.nextSibling);
+      }
+    }
+  }
+  function tick(){ hideLH(); styleYorum(); }
+  tick();
+  new MutationObserver(tick).observe(document.documentElement,{childList:true,subtree:true});
 })();
 </script>
 """
@@ -1819,18 +1859,36 @@ def compact_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, lh=
         lines.append(f"3.5 üst kalıpta %{o35:.0f}. Oran {q.get('o35')} ise tempo yüksek ama n={n} küçük.")
     if n < 30:
         lines.append("Havuz küçük. Tek seçeneğe yüklenme.")
+    tercih = []
     if taraf_oy[1] >= 2 and taraf_oy[0] == "ev":
         if avg >= 3.2 or o25 >= 70:
-            lines.append("Sonuç: ev tarafı kalıp ve modelde uyumlu, maç golcü. Tercih: ev kazanır veya ev + 2.5/3.5 üst. Sık skor 3-0 / 4-1 / 3-1.")
+            tercih.append("Ev kazanır tarafı kalıp ve modelde uyumlu, maç golcü.")
+            tercih.append("Kupon: ev veya ev + 2.5/3.5 üst.")
+            if tops:
+                tercih.append("Skor aralığı: " + ", ".join(t["score"] for t in tops[:3]) + ".")
         else:
-            lines.append("Sonuç: ev tarafı uyumlu. Tercih: ev veya ev + alt. Skor 1-0 / 2-0 / 2-1.")
+            tercih.append("Ev tarafı uyumlu, tempo düşük/orta.")
+            tercih.append("Kupon: ev veya ev + 2.5 alt.")
+            tercih.append("Skor aralığı: 1-0, 2-0, 2-1.")
     elif taraf_oy[1] >= 2 and taraf_oy[0] == "deplasman":
-        lines.append("Sonuç: deplasman tarafı uyumlu. Kör üst değil.")
+        tercih.append("Deplasman tarafı uyumlu.")
+        tercih.append("Kupon: MS 2 veya deplasman çifte şans. Kör üst değil.")
     elif taraf_oy[0] == "beraberlik" and px >= 30:
-        lines.append("Beraberlik kalıpta görünüyor ama tek X genelde pahalı.")
+        tercih.append("Beraberlik kalıpta var ama tek X genelde pahalı.")
+        tercih.append("Kupon: İY X / MS 1 veya çift şans.")
     else:
-        lines.append("Kaynaklar kısmen uyumlu. Banko yok; ev favori ise küçük bahis, uzun oranlara (X / MS 2) model AL yazılmaz.")
-    lines.append("Bu metin kanıt değil. Kalıp + model + para sentezi; n küçükse veya Betfair yoksa güven düşer.")
+        tercih.append("Kaynaklar tam örtüşmüyor. Banko yok.")
+        tercih.append("Uzun oranlara (X / MS 2) model AL yazılmaz.")
+        if lider == "ev":
+            tercih.append("En temkinli okuma: küçük ev bahsi.")
+    if n < 30:
+        tercih.append(f"Örnek {n} maç; bahsi küçük tut.")
+    if not matched_bw:
+        tercih.append("Betfair teyidi yok, güven bir kademe düşük.")
+    lines.append("Bu metin kanıt değil. Kalıp + model + para sentezi.")
+    lines.append("")
+    lines.append("TERCİH")
+    lines.extend(tercih)
     return "\n".join(lines)
 
 def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
