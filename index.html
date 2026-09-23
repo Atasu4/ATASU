@@ -224,22 +224,29 @@ async function loadBulletin(){
 function renderBulletin(rows, label){
   const box = $('bulletinBox');
   if(!rows.length){ box.innerHTML = '<p class="no">Bülten boş.</p>'; return; }
-  let html = '<p class="hint">'+rows.length+' maç · '+esc(label)+' · satıra bas, taramayı başlatır</p>';
-  html += '<table><tr><th>Saat</th><th>Lig</th><th>Maç</th><th>1</th><th>X</th><th>2</th></tr>';
+  window._bulten = rows;
+  window._bultenSecim = null;
+  let html = '<p class="hint">'+rows.length+' maç · '+esc(label)+' · satırın Tara yazısına bas</p>';
+  html += '<table id="bultenTablo"><tr><th>Saat</th><th>Lig</th><th>Maç</th><th>1</th><th>X</th><th>2</th><th></th></tr>';
   rows.forEach((m,i)=>{
-    html += '<tr data-i="'+i+'" style="cursor:pointer"><td>'+esc(m.time||'')+'</td><td>'+esc(m.league||'')+'</td><td>'+esc(m.home||'')+' — '+esc(m.away||'')+'</td><td>'+(m.h||'')+'</td><td>'+(m.d||'')+'</td><td>'+(m.a||'')+'</td></tr>';
+    html += '<tr data-i="'+i+'"><td>'+esc(m.time||'')+'</td><td>'+esc(m.league||'')+'</td><td>'+esc(m.home||'')+' — '+esc(m.away||'')+'</td><td>'+(m.h||'')+'</td><td>'+(m.d||'')+'</td><td>'+(m.a||'')+'</td><td><button type="button" class="g pick" data-i="'+i+'">Tara</button></td></tr>';
   });
   html += '</table>';
   box.innerHTML = html;
-  box._rows = rows;
-  box.querySelectorAll('tr[data-i]').forEach(tr=>{
-    tr.onclick = ()=> pickBulletin(rows[Number(tr.dataset.i)]);
-  });
+  box.onclick = function(ev){
+    const btn = ev.target.closest('.pick, tr[data-i]');
+    if(!btn) return;
+    ev.preventDefault();
+    const i = Number(btn.getAttribute('data-i'));
+    if(!Number.isFinite(i) || !rows[i]) return;
+    pickBulletin(rows[i]);
+  };
 }
 async function pickBulletin(m){
   if(!m || !m.mac_id) return alert('mac_id yok');
+  window._bultenSecim = m;
   $('lhQ').value = (m.home||'')+' - '+(m.away||'');
-  $('outModel').innerHTML = '<p class="mu">Oranlar alınıyor…</p>';
+  $('outModel').innerHTML = '<p class="mu">Oranlar alınıyor… '+esc($('lhQ').value)+'</p>';
   try{
     const r = await fetch('/api/from-mac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mac_id:String(m.mac_id), title:$('lhQ').value})});
     const j = await r.json();
@@ -260,7 +267,10 @@ function tableMatches(rows){
 
 async function runAll(){
   const url = $('link').value.trim();
-  if(!url) return alert('Link gir veya günlük bültenden maç seç');
+  if(!url && window._bultenSecim){
+    return pickBulletin(window._bultenSecim);
+  }
+  if(!url) return alert('Üstteki link kutusuna Maçkolik yapıştır veya bültende satırın Tara butonuna bas');
   $('outModel').innerHTML = '<p class="mu">Link okunuyor…</p>';
   let text='', title='';
   try{
