@@ -403,6 +403,16 @@ async function analyzeText(text, title){
       det += '<div class="chip">'+esc(p.name)+' '+p.odds+(p.ev!=null?' · EV '+p.ev:'')+(p.stand_note?' · '+esc(p.stand_note):'')+'</div>';
     });
   }
+  const exf = (st.extra||{});
+  if(exf.ok){
+    det += '<div class="verdict"><div class="kicker">football-data.co.uk</div>';
+    det += '<p class="v-sub">'+esc((exf.league_name||exf.league_code||'')+' · sezon '+(exf.season||''))+' · n '+(exf.sample_league||0)+'</p>';
+    det += '<p class="yorum">lig 2.5Ü %'+(exf.league_o25!=null?exf.league_o25:'—')+' · lig KG %'+(exf.league_kg!=null?exf.league_kg:'—');
+    if(exf.combo_o25!=null) det += '\nform 2.5Ü %'+exf.combo_o25+(exf.combo_kg!=null?' · form KG %'+exf.combo_kg:'');
+    if(exf.home_form) det += '\nev '+esc(exf.home_form.name)+' son '+exf.home_form.n+' · gol '+exf.home_form.gf_pg+'/'+exf.home_form.ga_pg;
+    if(exf.away_form) det += '\ndep '+esc(exf.away_form.name)+' son '+exf.away_form.n+' · gol '+exf.away_form.gf_pg+'/'+exf.away_form.ga_pg;
+    det += '</p></div>';
+  }
   if(parts.yorum) det += '<p class="yorum" style="margin-top:14px">'+esc(parts.yorum)+'</p>';
   $('outDetay').innerHTML = det || '<p class="mu">Detay yok.</p>';
 

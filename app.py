@@ -44,16 +44,40 @@ from mackolik_standing import (
     open_markets,
 )
 from updater import run_update, remember_season, _load_state
+from extra_feeds import lookup as fd_lookup
 
 
 def _standing(home, away="", league=""):
     pack = mk_resolve_match(home, away, league)
     if pack and pack.get("season_id"):
         remember_season(pack["season_id"])
+    try:
+        extra = fd_lookup(home or "", away or "", league or "")
+    except Exception as e:
+        extra = {"ok": False, "note": str(e)[:80], "source": "football-data.co.uk"}
+    if pack is None:
+        pack = {"ok": False, "home": home, "away": away}
+    pack["extra"] = extra
+    an = pack.setdefault("analysis", {})
+    if extra.get("ok"):
+        if an.get("combo_o25") is None and extra.get("combo_o25") is not None:
+            an["combo_o25"] = extra["combo_o25"]
+        if an.get("combo_kg") is None and extra.get("combo_kg") is not None:
+            an["combo_kg"] = extra["combo_kg"]
+        flags = an.setdefault("flags", [])
+        bits = []
+        if extra.get("league_o25") is not None:
+            bits.append(f"fd lig 2.5Ü %{extra['league_o25']}")
+        if extra.get("league_kg") is not None:
+            bits.append(f"fd lig KG %{extra['league_kg']}")
+        if extra.get("combo_o25") is not None:
+            bits.append(f"fd form 2.5Ü %{extra['combo_o25']}")
+        if bits:
+            flags.append(" · ".join(bits))
     return pack
 
 
-app = FastAPI(title="ATASU Intelligence", version="5.3.0")
+app = FastAPI(title="ATASU Intelligence", version="5.4.0")
 WEIGHTS = {
     "h": 1.2, "d": 1.0, "a": 1.2,
     "u25": 1.1, "o25": 1.1,
