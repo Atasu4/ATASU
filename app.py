@@ -393,6 +393,12 @@ def lh_style_engine(q, stats_obj=None):
             continue
         p = mp / 100.0
         ev = round(p * q[k] - 1, 3)
+        if ev >= 0.08 and mp >= 28 and q[k] <= 3.2:
+            sig = "AL"
+        elif ev <= -0.08 and mp <= 55:
+            sig = "PAHALI"
+        else:
+            sig = "nötr"
         edges.append({
             "key": k,
             "name": NAMES.get(k, k),
@@ -400,7 +406,7 @@ def lh_style_engine(q, stats_obj=None):
             "odds": q[k],
             "ev_percent": round(ev * 100, 1),
             "kelly_half": kelly_fraction(p, q[k]) and round(kelly_fraction(p, q[k]) / 2, 4),
-            "signal": "AL" if ev >= 0.08 else ("PAHALI" if ev <= -0.08 else "nötr"),
+            "signal": sig,
         })
     edges.sort(key=lambda x: x["ev_percent"], reverse=True)
     return {
@@ -869,11 +875,20 @@ def betwatch_find(title="", home="", away="", q=None):
             pool.append(_flatten_bw_match(m, src))
     if not pool:
         return {"ok": False, "error": bundle.get("error") or "Betwatch boş", "matched": None, "candidates": []}
+    title_n = _norm_team(title or "")
     scored = []
     for m in pool:
         sc = _team_hit(home, m["home"]) + _team_hit(away, m["away"])
         if sc <= 0 and home:
             sc = _team_hit(home, m["home"]) + _team_hit(home, m["away"])
+        pair_n = _norm_team(f"{m.get('home')} {m.get('away')}")
+        if title_n and pair_n:
+            ta, tb = set(title_n.split()), set(pair_n.split())
+            inter = {x for x in (ta & tb) if len(x) >= 4}
+            if len(inter) >= 2:
+                sc = max(sc, 4)
+            elif len(inter) == 1:
+                sc = max(sc, 2)
         if sc <= 0:
             continue
         scored.append((sc, m))
@@ -1749,9 +1764,16 @@ def compact_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, lh=
     lines.append("")
     lines.append("6) Birleşik karar")
     # synthesize
-    book_fav = "ev" if (implied(q.get("h")) or 0) >= max(implied(q.get("d")) or 0, implied(q.get("a")) or 0) else (
-        "deplasman" if (implied(q.get("a")) or 0) > (implied(q.get("d")) or 0) else "beraberlik"
-    ) if q.get("h") or q.get("a") else lider
+    hp, dp, ap = implied(q.get("h")), implied(q.get("d")), implied(q.get("a"))
+    if hp or dp or ap:
+        book_fav = max(
+            [("ev", hp or 0), ("beraberlik", dp or 0), ("deplasman", ap or 0)],
+            key=lambda x: x[1],
+        )[0]
+        if not hp:
+            book_fav = book_fav  # MS 1 yoksa ima çarpık kalır
+    else:
+        book_fav = lider
     o25_book = implied(q.get("o25"))
     pahali_ust = bool(o25_book and o25_book * 100 - o25 >= 8)
     ucuz_ust = bool(o25_book and o25 - o25_book * 100 >= 8)
@@ -1776,32 +1798,38 @@ def compact_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, lh=
     if para_fav:
         ayni.append(para_fav)
     taraf_oy = Counter(ayni).most_common(1)[0]
+    if not q.get("h"):
+        lines.append("MS 1 oranı girilmediği için piyasa favorisi satırı eksik kalır; ev zaten kısa favori.")
     lines.append(
         f"Kalıp tarafı: {lider} (%{lp:.0f}). "
         + (f"Model tarafı: {model_fav}. " if model_fav else "")
         + (f"Betfair para tarafı: {para_fav}. " if para_fav else "Betfair teyidi yok. ")
-        + f"Piyasa favorisi: {book_fav}."
+        + (f"Piyasa favorisi: {book_fav}." if q.get("h") else "Piyasa MS 1 kutusu boş.")
     )
+    avg = s.get("avg_goals") or 0
+    if avg >= 3.2 or o25 >= 70:
+        lines.append(f"Gol karakteri yüksek: ortalama {avg or '-'}, 2.5 üst %{o25:.0f}, 3.5 üst %{o35:.0f}. Düşük skor beklentisi yok.")
+    elif avg and avg <= 2.3 or o25 <= 45:
+        lines.append(f"Gol karakteri düşük/orta: ortalama {avg or '-'}, 2.5 üst %{o25:.0f}.")
     if pahali_ust:
-        lines.append(f"2.5 üst geçmişte %{o25:.0f} gelmiş, piyasa yaklaşık %{o25_book*100:.0f} istiyor. Üst pahalı; gol beklentisini kovalama.")
+        lines.append(f"2.5 üst geçmişte %{o25:.0f} gelmiş, piyasa yaklaşık %{o25_book*100:.0f} istiyor. Üst pahalı.")
     elif ucuz_ust:
         lines.append(f"2.5 üst geçmişte %{o25:.0f}, piyasa %{o25_book*100:.0f}. Üstte hafif değer olabilir.")
-    if kg >= 60 and q.get("btts") and implied(q["btts"]) and implied(q["btts"]) * 100 - kg >= 8:
-        lines.append("KG kalıpta sık, oran bunu fazla kesmiş. KG var tek başına zayıf kupon.")
+    if q.get("o35") and o35 >= 60:
+        lines.append(f"3.5 üst kalıpta %{o35:.0f}. Oran {q.get('o35')} ise tempo yüksek ama n={n} küçük.")
     if n < 30:
         lines.append("Havuz küçük. Tek seçeneğe yüklenme.")
-    if taraf_oy[1] >= 2 and taraf_oy[0] != "beraberlik":
-        lines.append(f"Sonuç: {taraf_oy[0]} kazanır tarafı kaynaklarda uyumlu. Skor olarak düşük/orta gol daha tutarlı" + (" çünkü üst oran ölmüş." if pahali_ust else "."))
-        if lider == "ev" and (s.get("avg_away_goals") or 1) < 1.1:
-            lines.append("Tercih aralığı: ev kazanır veya ev + 2.5 alt. Tam skor 1-0 / 2-0 / 2-1.")
-        elif lider == "deplasman":
-            lines.append("Tercih aralığı: deplasman veya deplasman çifte şans. Kör 2.5 üst değil.")
+    if taraf_oy[1] >= 2 and taraf_oy[0] == "ev":
+        if avg >= 3.2 or o25 >= 70:
+            lines.append("Sonuç: ev tarafı kalıp ve modelde uyumlu, maç golcü. Tercih: ev kazanır veya ev + 2.5/3.5 üst. Sık skor 3-0 / 4-1 / 3-1.")
         else:
-            lines.append("Net favori yok; geç veya çok küçük bahis.")
+            lines.append("Sonuç: ev tarafı uyumlu. Tercih: ev veya ev + alt. Skor 1-0 / 2-0 / 2-1.")
+    elif taraf_oy[1] >= 2 and taraf_oy[0] == "deplasman":
+        lines.append("Sonuç: deplasman tarafı uyumlu. Kör üst değil.")
     elif taraf_oy[0] == "beraberlik" and px >= 30:
-        lines.append("Beraberlik kalıpta görünüyor ama tek X genelde pahalı. İY X / MS 1 veya çift şans daha mantıklı.")
+        lines.append("Beraberlik kalıpta görünüyor ama tek X genelde pahalı.")
     else:
-        lines.append("Kaynaklar aynı kapıya bakmıyor. Bu maçte banko yok; ya geç ya da en ucuz kalan tek seçenek.")
+        lines.append("Kaynaklar kısmen uyumlu. Banko yok; ev favori ise küçük bahis, uzun oranlara (X / MS 2) model AL yazılmaz.")
     lines.append("Bu metin kanıt değil. Kalıp + model + para sentezi; n küçükse veya Betfair yoksa güven düşer.")
     return "\n".join(lines)
 
