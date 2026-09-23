@@ -1,2 +1,1 @@
-Sadece app.py yi uzerine koy, restart.
-Yorum artik 6 baslikli duz metin.
+app.py uzerine koy restart

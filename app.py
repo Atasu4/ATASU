@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from urllib.request import Request, urlopen
@@ -696,7 +696,7 @@ EMPIRICAL_RULES = [
         "why": "MS 1 ≤1.45 ve KG Yok ≤1.50 olan 261 maçta 192 ev kazandı.",
     },
 ]
-LH_URL = "https://eagle-sapphire-quiet-bold.grok.me/"
+# LH Bet sekmesi kaldirildi
 
 BETWATCH_API = os.environ.get("BETWATCH_API", "https://api.betwatch.fr/api/v1")
 BETWATCH_TOKEN = os.environ.get("BETWATCH_API_KEY", "").strip() or "3998ca22082238518d38af6f4aff0eca45e75e9b"
@@ -738,12 +738,40 @@ def _bw_bundle(force=False):
     return _BW_CACHE
 
 
+TEAM_ALIAS = {
+    "japonya": "japan", "tayland": "thailand", "turkiye": "turkey", "almanya": "germany",
+    "fransa": "france", "ingiltere": "england", "ispanya": "spain", "italya": "italy",
+    "portekiz": "portugal", "hollanda": "netherlands", "belcika": "belgium",
+    "isvicre": "switzerland", "avusturya": "austria", "isvec": "sweden", "norvec": "norway",
+    "danimarka": "denmark", "polonya": "poland", "cekya": "czech", "cek": "czech",
+    "yunanistan": "greece", "hirvatistan": "croatia", "sirbistan": "serbia",
+    "romanya": "romania", "macaristan": "hungary", "ukrayna": "ukraine",
+    "rusya": "russia", "cin": "china", "guney kore": "south korea", "kore": "korea",
+    "suudi arabistan": "saudi arabia", "bae": "uae", "misir": "egypt",
+    "fas": "morocco", "cezayir": "algeria", "tunus": "tunisia", "nijerya": "nigeria",
+    "brezilya": "brazil", "arjantin": "argentina", "meksika": "mexico",
+    "abd": "usa", "amerika": "usa", "avustralya": "australia",
+    "yeni zelanda": "new zealand", "guney afrika": "south africa",
+    "kirgizistan": "kyrgyzstan", "hong kong": "hong kong", "hongkong": "hong kong",
+    "ozbekistan": "uzbekistan", "kazakistan": "kazakhstan", "turkmenistan": "turkmenistan",
+    "azerbaycan": "azerbaijan", "gurcistan": "georgia", "ermeninistan": "armenia",
+    "irak": "iraq", "iran": "iran", "suriye": "syria", "filistin": "palestine",
+    "israil": "israel", "katar": "qatar", "kuveyt": "kuwait", "umman": "oman",
+    "endonezya": "indonesia", "malezya": "malaysia", "vietnam": "vietnam",
+    "real madrid": "real madrid", "getafe": "getafe",
+}
+
+
 def _norm_team(s):
     s = (s or "").casefold()
     s = re.sub(r"\([^)]*\)", " ", s)
     s = s.replace("ü", "u").replace("ö", "o").replace("ş", "s").replace("ç", "c").replace("ı", "i").replace("ğ", "g")
     s = re.sub(r"[^a-z0-9]+", " ", s)
-    drop = {"fc", "cf", "sk", "fk", "afc", "sc", "the", "de", "united", "city", "w"}
+    s = re.sub(r"\b(u1[89]|u2[013]|u23|u21|u19|u18|u17)\b", "u23" if "u23" in s or "u21" in s else "u", s)
+    for tr, en in TEAM_ALIAS.items():
+        if tr in s:
+            s = s.replace(tr, en)
+    drop = {"fc", "cf", "sk", "fk", "afc", "sc", "the", "de", "united", "city", "w", "u", "u18", "u19", "u21", "u23"}
     parts = [p for p in s.split() if p and p not in drop]
     return " ".join(parts)
 
@@ -757,7 +785,10 @@ def _team_hit(a, b):
     sa, sb = set(a.split()), set(b.split())
     if sa and sb and (sa <= sb or sb <= sa):
         return 2
-    if sa & sb:
+    inter = sa & sb
+    if len(inter) >= 1 and any(len(x) >= 4 for x in inter):
+        return 2
+    if inter:
         return 1
     return 0
 
@@ -956,7 +987,7 @@ def empirical_banko(q):
         "matched": hit,
         "unmatched": miss,
         "source": "history.json sonuçlu maçlar, 2026-05 … 2026-09",
-        "lh_url": LH_URL,
+        "lh_url": None,
         "note": "Kural geçmiş sıklıktır; gelecek maçı garanti etmez. n küçük olan kural daha kırılgan.",
     }
 
@@ -973,9 +1004,40 @@ class OddsReq(BaseModel):
 @app.get("/")
 def root():
     html = ROOT / "index.html"
-    if html.exists():
-        return FileResponse(html)
-    raise HTTPException(404, "index.html yok")
+    if not html.exists():
+        raise HTTPException(404, "index.html yok")
+    raw = html.read_text(encoding="utf-8", errors="replace")
+    hide = """
+<style id="hide-lh">
+button, a, [role="tab"], .tab, .nav-item { }
+</style>
+<script id="hide-lh-js">
+(function(){
+  function hideLH(){
+    const nodes = Array.from(document.querySelectorAll('button,a,[role="tab"],.tab,span,div'));
+    nodes.forEach(function(el){
+      const t = (el.textContent||'').replace(/\\s+/g,' ').trim();
+      if(!t) return;
+      if(/^(LH|LH BET|LH Bet)$/i.test(t) || t === 'LH'){
+        const tab = el.closest('[role="tab"],button,a') || el;
+        tab.style.display = 'none';
+        if(tab.parentElement && tab.parentElement.children.length <= 5){
+          /* keep layout */
+        }
+      }
+    });
+  }
+  hideLH();
+  new MutationObserver(hideLH).observe(document.documentElement,{childList:true,subtree:true});
+})();
+</script>
+"""
+    if "</body>" in raw.lower():
+        idx = raw.lower().rfind("</body>")
+        raw = raw[:idx] + hide + raw[idx:]
+    else:
+        raw += hide
+    return HTMLResponse(raw)
 
 
 @app.get("/api/meta")
@@ -1658,7 +1720,7 @@ def compact_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, lh=
             lines.append("Market açık ama volume henüz düşük.")
 
     lines.append("")
-    lines.append("4) Dixon-Coles model (LH çekirdeği)")
+    lines.append("4) Dixon-Coles model")
     if lh and lh.get("ok") and lh.get("dixon_coles"):
         dc = lh["dixon_coles"]
         top = (dc.get("top") or [{}])[0]
