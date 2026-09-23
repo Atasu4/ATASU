@@ -1265,6 +1265,38 @@ def match_link(req: LinkReq):
         raise HTTPException(502, "Maç linki sunucudan okunamadı: " + str(e)[:120])
 
 
+class MacIdReq(BaseModel):
+    mac_id: str
+    title: str = ""
+
+
+@app.post("/api/from-mac")
+def from_mac(req: MacIdReq):
+    mac_id = re.sub(r"\D", "", req.mac_id or "")
+    if len(mac_id) < 5:
+        raise HTTPException(400, "Geçerli mac_id yok")
+    try:
+        raw = _fetch(f"https://arsiv.mackolik.com/AjaxHandlers/IddaaHandler.aspx?command=morebets&mac={mac_id}&type=ByLeague")
+        name, bulletin = _morebets_bulletin(raw)
+        title = (req.title or name or "").strip()
+        if not bulletin or len(bulletin) < 20:
+            raise ValueError("bülten boş")
+        home, away = _parse_teams(title)
+        return {
+            "ok": True,
+            "mac_id": mac_id,
+            "title": title,
+            "home": home,
+            "away": away,
+            "text": bulletin,
+            "source": "Mackolik Iddaa",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, "Maç bülteni alınamadı: " + str(e)[:120])
+
+
 @app.get("/api/selftest")
 def selftest():
     return {
