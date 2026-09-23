@@ -210,7 +210,7 @@ async function runAll(){
     $('outModel').innerHTML = '<p class="no">Linkten en az 2 oran çıkmadı.</p><pre class="mu">'+text.slice(0,800)+'</pre>';
     return;
   }
-  const body = {odds, tolerance: Number($('tol').value||0.05), league:$('league').value, limit:Number($('lim').value||200)};
+  const body = {odds, tolerance: Number($('tol').value||0.05), league:$('league').value, limit:Number($('lim').value||200), title: title||$('lhQ').value||''};
   const [briefR, exactR, p6R] = await Promise.all([
     fetch('/api/brief',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),
     fetch('/api/exact-odds',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({odds,tolerance:0})}),
@@ -242,7 +242,11 @@ async function runAll(){
   }
   $('outModel').innerHTML = html;
 
-  let ex = chips(odds);
+  let ex = '';
+  if(brief.yorum){
+    ex += '<pre class="mu" style="font-size:11px;line-height:1.45;white-space:pre-wrap;margin:0 0 12px">'+brief.yorum.replace(/</g,'')+'</pre>';
+  }
+  ex += chips(odds);
   (exact.categories||[]).forEach(c=>{
     const tops = (c.summary&&c.summary.top||[]).map(o=>o.name+': %'+o.percent).join(' · ');
     ex += '<div class="k" style="margin:8px 0"><b>'+c.category+'</b> · '+c.status+' · '+c.matched+(tops?' · '+tops:'')+'</div>';

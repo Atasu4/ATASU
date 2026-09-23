@@ -1,3 +1,11 @@
+# ATASU 5.1.1
+
+- Excel sekmesinde kısa yorum kutusu (havuz özeti + form + okuma)
+- `/api/brief` → `yorum` alanı
+- Maç adından iki takım parse, history.json’dan son form
+- Birebir 0 olsa da analog tablo üstünde özet durur
+- Ayrı excel_yorum.py gerekmez
+
 # ATASU 5.1.0
 
 - Bülten kutusu / tarih / üst Excel yapıştırma kalktı

@@ -35,7 +35,7 @@ GROUPS = [
     ("Karşılıklı Gol", ["btts", "nobtts"]),
     ("İY 1,5 Alt/Üst", ["iyu15", "iyo15"]),
 ]
-app = FastAPI(title="ATASU Intelligence", version="5.1.0")
+app = FastAPI(title="ATASU Intelligence", version="5.1.1")
 WEIGHTS = {
     "h": 1.2, "d": 1.0, "a": 1.2,
     "u25": 1.1, "o25": 1.1,
@@ -584,6 +584,8 @@ class OddsReq(BaseModel):
     tolerance: float = Field(0.05, ge=0, le=5)
     league: str = ""
     limit: int = Field(500, ge=1, le=5000)
+    title: str = ""
+    page_text: str = ""
 
 
 @app.get("/")
@@ -1076,7 +1078,130 @@ class Plus6Req(BaseModel):
     iyo15: float | None = None
 
 
-def brief_from_odds(q, tol=0.05, league="", limit=200):
+def _parse_teams(title: str):
+    t = re.sub(r"\s+", " ", (title or "")).strip()
+    t = re.split(r"\s*\|\s*|\s+-\s+Mackolik|\s+Canli|\s+Canlı", t, maxsplit=1)[0]
+    for sep in (" vs ", " VS ", " v ", " — ", " – ", " - "):
+        if sep in t:
+            a, b = t.split(sep, 1)
+            a, b = a.strip(" .:-"), b.strip(" .:-")
+            if a and b and len(a) < 48 and len(b) < 48:
+                return a, b
+    return None, None
+
+
+def _team_form(name, n=5):
+    if not name:
+        return None
+    key = name.casefold()
+    rows = []
+    for r in HISTORY:
+        ft = score(r.get("ft"))
+        if not ft:
+            continue
+        home = str(r.get("home") or "")
+        away = str(r.get("away") or "")
+        if key not in home.casefold() and key not in away.casefold():
+            continue
+        rows.append((str(r.get("date") or ""), home, away, ft))
+    rows.sort(key=lambda x: x[0], reverse=True)
+    rows = rows[:n]
+    if not rows:
+        return None
+    w = d = l = 0
+    gf = ga = 0
+    letters = []
+    for _, home, away, ft in rows:
+        ev = key in home.casefold()
+        g_for, g_ag = (ft[0], ft[1]) if ev else (ft[1], ft[0])
+        gf += g_for
+        ga += g_ag
+        if g_for > g_ag:
+            w += 1
+            letters.append("W")
+        elif g_for == g_ag:
+            d += 1
+            letters.append("D")
+        else:
+            l += 1
+            letters.append("L")
+    k = len(rows)
+    return {
+        "ad": name,
+        "n": k,
+        "WDL": f"{w}-{d}-{l}",
+        "ort": f"{round(gf/k, 1)}/{round(ga/k, 1)}",
+        "form": "".join(letters),
+    }
+
+
+def compact_yorum(s, matches, title="", league=""):
+    n = s.get("sample_ft") or 0
+    ev, dep = _parse_teams(title)
+    ligler = Counter(str(r.get("league") or "?") for r in matches)
+    lig_txt = " ".join(f"{k}×{v}" for k, v in ligler.most_common(4))
+    lines = []
+    head = (title.split("|")[0].strip() if title else "özet")
+    if league:
+        head += " · " + league
+    lines.append(head[:90])
+    if not n:
+        lines.append("havuz boş · birebir/benzer sonuç yok")
+        return "\n".join(lines)
+    lines.append(f"n={n}" + (f" · {lig_txt}" if lig_txt else "") + " · farklı lig=kalıp")
+
+    def g(name):
+        v = s.get(name)
+        return None if not isinstance(v, (int, float)) else v
+
+    ms = f"ms 1 %{g('MS 1') or 0:.0f} · X %{g('MS X') or 0:.0f} · 2 %{g('MS 2') or 0:.0f}"
+    iy = f"iy 1 %{g('İY 1') or 0:.0f} · X %{g('İY X') or 0:.0f} · 2 %{g('İY 2') or 0:.0f}"
+    lines.append(ms + " · " + iy)
+    tops = s.get("top_scores") or []
+    if tops:
+        lines.append("ms sık " + " ".join(f"{t['score']} %{t['percent']:.0f}" for t in tops[:3]))
+    lines.append(
+        f"2.5ü %{g('2,5 Üst') or 0:.0f} · 3.5ü %{g('3,5 Üst') or 0:.0f} · kg %{g('KG Var') or 0:.0f} · "
+        f"iy gol — · 2.y %{g('2.Y 1+ Gol') or 0:.0f}"
+    )
+    if s.get("avg_goals") is not None:
+        lines.append(f"ort gol {s['avg_goals']} ev {s.get('avg_home_goals')} / dep {s.get('avg_away_goals')}")
+    fe = _team_form(ev) if ev else None
+    fd = _team_form(dep) if dep else None
+    if fe or fd:
+        bit = []
+        if fe:
+            bit.append(f"ev {fe['ad']} {fe['WDL']} {fe['ort']} {fe['form']}")
+        if fd:
+            bit.append(f"dep {fd['ad']} {fd['WDL']} {fd['ort']} {fd['form']}")
+        lines.append(" · ".join(bit))
+    o25 = g("2,5 Üst") or 0
+    p1 = g("MS 1") or 0
+    px = g("MS X") or 0
+    p2 = g("MS 2") or 0
+    kg = g("KG Var") or 0
+    okuma = []
+    if o25 >= 65:
+        okuma.append("havuz golcü")
+    elif o25 <= 40:
+        okuma.append("havuz düşük skor")
+    else:
+        okuma.append("orta gol")
+    lider, lp = max([("1", p1), ("X", px), ("2", p2)], key=lambda x: x[1])
+    if lp >= 45:
+        okuma.append("analog " + ("ev" if lider == "1" else "dep" if lider == "2" else "X"))
+    else:
+        okuma.append("ms dağınık")
+    if kg >= 60:
+        okuma.append("kg sık")
+    elif kg and kg <= 35:
+        okuma.append("tek kapı var")
+    lines.append("okuma: " + " · ".join(okuma))
+    lines.append("birebir 0 olabilir · tablo kanıt değil kalıp")
+    return "\n".join(lines)
+
+
+def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
     pool, matches, minimum, _ = match_rows(q, tol, league)
     s = stats(matches)
     n = s.get("sample_ft") or 0
@@ -1121,6 +1246,7 @@ def brief_from_odds(q, tol=0.05, league="", limit=200):
         "minimum_match_count": minimum,
         "pool_size": len(pool),
         "matches": matches[:limit],
+        "yorum": compact_yorum(s, matches, title=title, league=league),
     }
 
 
@@ -1210,4 +1336,4 @@ def brief(req: OddsReq):
             q[k] = f
     if len(q) < 2:
         raise HTTPException(400, "En az 2 oran lazım.")
-    return brief_from_odds(q, req.tolerance, req.league, req.limit)
+    return brief_from_odds(q, req.tolerance, req.league, req.limit, title=req.title or "")
