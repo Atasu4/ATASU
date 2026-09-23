@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from html import unescape
 from pathlib import Path
 from collections import Counter
-import json, re
+import json, re, os, time
 
 ROOT = Path(__file__).parent
 HISTORY_FILE = ROOT / "data" / "history.json"
@@ -537,6 +537,227 @@ EMPIRICAL_RULES = [
 ]
 LH_URL = "https://eagle-sapphire-quiet-bold.grok.me/"
 
+BETWATCH_API = os.environ.get("BETWATCH_API", "https://api.betwatch.fr/api/v1")
+BETWATCH_TOKEN = os.environ.get("BETWATCH_API_KEY", "").strip()
+_BW_CACHE = {"prematch": None, "live": None, "ts": 0.0}
+_BW_TTL = 40
+
+BW_MARKET_MAP = {
+    "Match Odds": {"home": "h", "the draw": "d", "draw": "d", "away": "a"},
+    "Over/Under 2.5 Goals": {"under 2.5 goals": "u25", "over 2.5 goals": "o25"},
+    "Over/Under 3.5 Goals": {"under 3.5 goals": "u35", "over 3.5 goals": "o35"},
+    "Both teams to Score?": {"yes": "btts", "no": "nobtts"},
+    "First Half Goals 1.5": {"under 1.5 goals": "iyu15", "over 1.5 goals": "iyo15"},
+    "Over/Under 5.5 Goals": {"over 5.5 goals": "g6"},
+}
+
+
+def _bw_fetch(path):
+    if not BETWATCH_TOKEN:
+        return None, "BETWATCH_API_KEY yok"
+    url = BETWATCH_API.rstrip("/") + path
+    try:
+        req = Request(url, headers={"Authorization": "Token " + BETWATCH_TOKEN, "Accept": "application/json"})
+        with urlopen(req, timeout=18) as f:
+            return json.loads(f.read().decode("utf-8", errors="replace")), None
+    except Exception as e:
+        return None, str(e)[:160]
+
+
+def _bw_bundle(force=False):
+    now = time.time()
+    if not force and _BW_CACHE["prematch"] is not None and now - _BW_CACHE["ts"] < _BW_TTL:
+        return _BW_CACHE
+    pre, e1 = _bw_fetch("/football/prematch")
+    live, e2 = _bw_fetch("/football/live")
+    _BW_CACHE["prematch"] = pre if isinstance(pre, list) else []
+    _BW_CACHE["live"] = live if isinstance(live, list) else []
+    _BW_CACHE["ts"] = now
+    _BW_CACHE["error"] = ", ".join(x for x in (e1, e2) if x)
+    return _BW_CACHE
+
+
+def _norm_team(s):
+    s = (s or "").casefold()
+    s = re.sub(r"\([^)]*\)", " ", s)
+    s = s.replace("ü", "u").replace("ö", "o").replace("ş", "s").replace("ç", "c").replace("ı", "i").replace("ğ", "g")
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    drop = {"fc", "cf", "sk", "fk", "afc", "sc", "the", "de", "united", "city", "w"}
+    parts = [p for p in s.split() if p and p not in drop]
+    return " ".join(parts)
+
+
+def _team_hit(a, b):
+    a, b = _norm_team(a), _norm_team(b)
+    if not a or not b:
+        return 0
+    if a == b or a in b or b in a:
+        return 3
+    sa, sb = set(a.split()), set(b.split())
+    if sa and sb and (sa <= sb or sb <= sa):
+        return 2
+    if sa & sb:
+        return 1
+    return 0
+
+
+def _parse_home_away(title=""):
+    h, a = _parse_teams(title)
+    return h, a
+
+
+def _flatten_bw_match(m, source="prematch"):
+    teams = m.get("teams") or {}
+    home, away = teams.get("v1") or "", teams.get("v2") or ""
+    markets = {}
+    for mk in m.get("markets") or []:
+        name = mk.get("name") or ""
+        mapping = BW_MARKET_MAP.get(name)
+        if not mapping:
+            continue
+        total_vol = 0.0
+        rows = []
+        for rn in mk.get("runners") or []:
+            rn_name = str(rn.get("name") or "")
+            key = None
+            low = rn_name.casefold()
+            if name == "Match Odds":
+                if low == home.casefold():
+                    key = "h"
+                elif low == away.casefold():
+                    key = "a"
+                elif "draw" in low:
+                    key = "d"
+            else:
+                key = mapping.get(low)
+            odd = rn.get("odd")
+            vol = rn.get("volume")
+            try:
+                odd = float(odd) if odd is not None else None
+            except Exception:
+                odd = None
+            try:
+                vol = float(vol) if vol is not None else 0.0
+            except Exception:
+                vol = 0.0
+            total_vol += vol
+            rows.append({"key": key, "name": rn_name, "odd": odd, "volume": round(vol, 2)})
+        for row in rows:
+            share = round(100 * row["volume"] / total_vol, 1) if total_vol else None
+            row["money_pct"] = share
+            if row["key"]:
+                markets[row["key"]] = {
+                    "odd": row["odd"],
+                    "volume": row["volume"],
+                    "money_pct": share,
+                    "market": name,
+                    "runner": row["name"],
+                }
+        markets["_vol_" + name] = round(total_vol, 2)
+    return {
+        "match_id": m.get("match_id"),
+        "home": home,
+        "away": away,
+        "league": m.get("league"),
+        "country": m.get("country"),
+        "kickoff": m.get("kickoff"),
+        "source": source,
+        "markets": {k: v for k, v in markets.items() if not str(k).startswith("_vol_")},
+        "volumes": {k[5:]: v for k, v in markets.items() if str(k).startswith("_vol_")},
+    }
+
+
+def betwatch_find(title="", home="", away="", q=None):
+    if not home and not away:
+        home, away = _parse_home_away(title)
+    bundle = _bw_bundle()
+    pool = []
+    for src in ("live", "prematch"):
+        for m in bundle.get(src) or []:
+            pool.append(_flatten_bw_match(m, src))
+    if not pool:
+        return {"ok": False, "error": bundle.get("error") or "Betwatch boş", "matched": None, "candidates": []}
+    scored = []
+    for m in pool:
+        sc = _team_hit(home, m["home"]) + _team_hit(away, m["away"])
+        if sc <= 0 and home:
+            sc = _team_hit(home, m["home"]) + _team_hit(home, m["away"])
+        if sc <= 0:
+            continue
+        scored.append((sc, m))
+    scored.sort(key=lambda x: -x[0])
+    best = scored[0][1] if scored and scored[0][0] >= 2 else None
+    overlay = []
+    if best and q:
+        for k, hist_odd in q.items():
+            bw = (best.get("markets") or {}).get(k)
+            if not bw:
+                continue
+            implied_p = implied(bw.get("odd") or hist_odd)
+            overlay.append({
+                "key": k,
+                "name": NAMES.get(k, k),
+                "book_odd": hist_odd,
+                "betwatch_odd": bw.get("odd"),
+                "volume": bw.get("volume"),
+                "money_pct": bw.get("money_pct"),
+                "implied_percent": round(100 * implied_p, 1) if implied_p else None,
+            })
+    return {
+        "ok": True,
+        "error": bundle.get("error") or None,
+        "token_set": bool(BETWATCH_TOKEN),
+        "matched": best,
+        "overlay": overlay,
+        "candidates": [{"score": s, "home": m["home"], "away": m["away"], "league": m["league"], "kickoff": m["kickoff"]} for s, m in scored[:6]],
+        "note": "Betfair Exchange eşleşen para. Düşük volume gürültüdür. Kalıp + money aynı tarafta ve oran ölmemişse AL.",
+    }
+
+
+def money_signals(stats_obj, overlay, q=None):
+    q = q or {}
+    out = []
+    name_to_key = {
+        "MS 1": "h", "MS X": "d", "MS 2": "a",
+        "2,5 Üst": "o25", "2,5 Alt": "u25",
+        "3,5 Üst": "o35", "3,5 Alt": "u35",
+        "KG Var": "btts", "KG Yok": "nobtts",
+        "İY 1,5 Alt": "iyu15", "İY 1,5 Üst": "iyo15",
+    }
+    ov = {x["key"]: x for x in overlay or []}
+    for name, key in name_to_key.items():
+        hv = stats_obj.get(name) if stats_obj else None
+        row = ov.get(key)
+        if not row and not isinstance(hv, (int, float)):
+            continue
+        implied_p = row.get("implied_percent") if row else (round(100 * implied(q.get(key)), 1) if implied(q.get(key)) else None)
+        money = row.get("money_pct") if row else None
+        vol = row.get("volume") if row else None
+        edge = round(hv - implied_p, 1) if isinstance(hv, (int, float)) and isinstance(implied_p, (int, float)) else None
+        signal = "PAS"
+        if edge is not None and money is not None and (vol or 0) >= 400:
+            if edge >= 6 and money >= 45:
+                signal = "AL"
+            elif edge <= -6 and money >= 55:
+                signal = "PAHALI"
+            elif edge >= 8 and money < 35:
+                signal = "TERS/MONEY YOK"
+        elif edge is not None:
+            signal = "EV+" if edge >= 8 else ("EV-" if edge <= -8 else "nötr")
+        out.append({
+            "name": name,
+            "key": key,
+            "historical_percent": hv,
+            "implied_percent": implied_p,
+            "money_pct": money,
+            "volume": vol,
+            "betwatch_odd": row.get("betwatch_odd") if row else None,
+            "edge": edge,
+            "signal": signal,
+        })
+    out.sort(key=lambda x: ({"AL": 3, "EV+": 2, "TERS/MONEY YOK": 1, "nötr": 0, "PAS": -1, "EV-": -2, "PAHALI": -3}.get(x["signal"], 0), abs(x["edge"] or 0)), reverse=True)
+    return out
+
 
 def empirical_banko(q):
     hit = []
@@ -602,7 +823,7 @@ def meta():
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "markets": MARKETS,
-        "version": "5.1.0",
+        "version": "5.1.2",
         "warning": HISTORY_WARNING,
         "rule": "Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır.",
     }
@@ -824,7 +1045,13 @@ def match_link(req: LinkReq):
                 pass
         if len(text) < 40:
             raise ValueError("Sayfa içeriği alınamadı")
-        return {"ok": True, "url": url, "title": title, "text": text[:120000], "chars": len(text), "source": source, "mac_id": mac_id}
+        home, away = _parse_teams(title)
+        bw = betwatch_find(title, home or "", away or "")
+        return {
+            "ok": True, "url": url, "title": title, "home": home, "away": away,
+            "text": text[:120000], "chars": len(text), "source": source, "mac_id": mac_id,
+            "betwatch": bw,
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -835,12 +1062,33 @@ def match_link(req: LinkReq):
 def selftest():
     return {
         "ok": True,
-        "version": "5.1.0",
+        "version": "5.1.2",
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
-        "endpoints": ["/api/match-link", "/api/odds", "/api/exact-odds", "/api/plus6"],
+        "endpoints": ["/api/match-link", "/api/odds", "/api/exact-odds", "/api/plus6", "/api/betwatch"],
+        "betwatch_token": bool(BETWATCH_TOKEN),
         "warning": HISTORY_WARNING,
     }
+
+
+class BetwatchReq(BaseModel):
+    title: str = ""
+    home: str = ""
+    away: str = ""
+    odds: dict[str, float | None] | None = None
+
+
+@app.post("/api/betwatch")
+def betwatch_api(req: BetwatchReq):
+    q = {}
+    for k, v in (req.odds or {}).items():
+        try:
+            f = float(v)
+        except Exception:
+            continue
+        if k in MARKETS and f > 1:
+            q[k] = f
+    return betwatch_find(req.title, req.home, req.away, q or None)
 
 
 @app.post("/api/odds")
@@ -934,6 +1182,10 @@ def odds_scan(req: OddsReq):
         "warning": "Örneklem 30 maçın altında; yüzdeleri tek başına güçlü kanıt olarak yorumlama." if len(matches) < 30 else None,
         "source": "history.json içindeki sonuçlu gerçek geçmiş maçlar",
     }
+    bw = betwatch_find(req.title or "", q=q)
+    bw["signals"] = money_signals(s, bw.get("overlay"), q)
+    p6 = plus6_payload(q)
+    yorum = compact_yorum(s, matches, title=req.title or "", league=req.league or "", q=q, bw=bw, p6=p6)
     return {
         "method": f"{len(q)} gerçek oran tarandı. En az {minimum}/{len(q)} oran ±{req.tolerance} içinde eşleşti.",
         "sample_audit": sample_audit,
@@ -964,6 +1216,8 @@ def odds_scan(req: OddsReq):
         ),
         "late_goal": late_goal_profile(matches),
         "signals": signal_engine(s, prob, s.get("sample_ft") or 0, q),
+        "betwatch": bw,
+        "yorum": yorum,
         "matches": matches[: req.limit],
     }
 
@@ -1135,7 +1389,8 @@ def _team_form(name, n=5):
     }
 
 
-def compact_yorum(s, matches, title="", league=""):
+def compact_yorum(s, matches, title="", league="", q=None, bw=None, p6=None):
+    q = q or {}
     n = s.get("sample_ft") or 0
     ev, dep = _parse_teams(title)
     ligler = Counter(str(r.get("league") or "?") for r in matches)
@@ -1147,6 +1402,8 @@ def compact_yorum(s, matches, title="", league=""):
     lines.append(head[:90])
     if not n:
         lines.append("havuz boş · birebir/benzer sonuç yok")
+        if bw and not bw.get("matched"):
+            lines.append("betfair eşleşme yok")
         return "\n".join(lines)
     lines.append(f"n={n}" + (f" · {lig_txt}" if lig_txt else "") + " · farklı lig=kalıp")
 
@@ -1176,6 +1433,7 @@ def compact_yorum(s, matches, title="", league=""):
             bit.append(f"dep {fd['ad']} {fd['WDL']} {fd['ort']} {fd['form']}")
         lines.append(" · ".join(bit))
     o25 = g("2,5 Üst") or 0
+    u25 = g("2,5 Alt") or 0
     p1 = g("MS 1") or 0
     px = g("MS X") or 0
     p2 = g("MS 2") or 0
@@ -1196,12 +1454,76 @@ def compact_yorum(s, matches, title="", league=""):
         okuma.append("kg sık")
     elif kg and kg <= 35:
         okuma.append("tek kapı var")
+    if p6 and isinstance(p6.get("compatibility_percent"), (int, float)):
+        okuma.append(f"+6 %{p6['compatibility_percent']}")
     lines.append("okuma: " + " · ".join(okuma))
-    lines.append("birebir 0 olabilir · tablo kanıt değil kalıp")
+
+    sigs = (bw or {}).get("signals") or money_signals(s, (bw or {}).get("overlay"), q)
+    matched_bw = (bw or {}).get("matched")
+    if not BETWATCH_TOKEN:
+        lines.append("betfair: anahtar yok")
+    elif not matched_bw:
+        lines.append("betfair: bu maç exchange'de yok veya isim eşleşmedi")
+    else:
+        mh, ma = matched_bw.get("home"), matched_bw.get("away")
+        lines.append(f"betfair: {mh} - {ma} · {matched_bw.get('source') or 'prematch'}")
+        money_bits = []
+        for key, label in [("h", "1"), ("d", "X"), ("a", "2"), ("o25", "2.5ü"), ("u25", "2.5a"), ("btts", "kg"), ("nobtts", "kgy")]:
+            mk = (matched_bw.get("markets") or {}).get(key) or {}
+            if mk.get("money_pct") is None and mk.get("odd") is None:
+                continue
+            bit = label
+            if mk.get("odd"):
+                bit += f" {mk['odd']}"
+            if mk.get("money_pct") is not None:
+                bit += f" %{mk['money_pct']:.0f}"
+            if mk.get("volume"):
+                bit += f" €{int(mk['volume'])}"
+            money_bits.append(bit)
+        if money_bits:
+            lines.append("para " + " · ".join(money_bits[:7]))
+        al = [x["name"] for x in sigs if x.get("signal") == "AL"]
+        pahali = [x["name"] for x in sigs if x.get("signal") in ("PAHALI", "EV-")]
+        ters = [x["name"] for x in sigs if x.get("signal") == "TERS/MONEY YOK"]
+        evp = [x["name"] for x in sigs if x.get("signal") == "EV+"]
+        karar = []
+        if al:
+            karar.append("AL " + ", ".join(al[:3]))
+        elif evp:
+            karar.append("kalıp+ " + ", ".join(evp[:3]))
+        if pahali:
+            karar.append("pahalı " + ", ".join(pahali[:3]))
+        if ters:
+            karar.append("para ters " + ", ".join(ters[:2]))
+        if not karar:
+            # fuse hist vs money even without volume threshold
+            top_money = None
+            best_pct = -1
+            for key, label in [("h", "MS 1"), ("d", "MS X"), ("a", "MS 2"), ("o25", "2,5 Üst"), ("u25", "2,5 Alt"), ("btts", "KG Var")]:
+                mk = (matched_bw.get("markets") or {}).get(key) or {}
+                pct = mk.get("money_pct") or 0
+                if pct > best_pct:
+                    best_pct = pct
+                    top_money = label
+            hist_side = {"1": "MS 1", "X": "MS X", "2": "MS 2"}.get(lider)
+            if o25 >= 60 and top_money in ("2,5 Üst", "KG Var"):
+                karar.append("kalıp ve para gol tarafında · oran kısaysa chase etme")
+            elif o25 <= 45 and top_money == "2,5 Alt":
+                karar.append("kalıp ve para alt tarafta")
+            elif hist_side and top_money == hist_side:
+                karar.append(f"kalıp+para {hist_side}")
+            elif hist_side and top_money and top_money != hist_side:
+                karar.append(f"kalıp {hist_side} · para {top_money} · çelişki")
+            else:
+                karar.append("betfair teyit zayıf")
+        lines.append("birleşik: " + " · ".join(karar))
+
+    lines.append("birebir 0 olabilir · tablo kanıt değil kalıp+para")
     return "\n".join(lines)
 
 
 def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
+    match_title = title or ""
     pool, matches, minimum, _ = match_rows(q, tol, league)
     s = stats(matches)
     n = s.get("sample_ft") or 0
@@ -1236,6 +1558,9 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
     else:
         lines.append("Bu oran bandında sonuçlu geçmiş maç yok.")
     lines.append(f"+6 bant uyumu %{p6['compatibility_percent']} ({p6['matched_rules']}/{p6['total_rules']}).")
+    bw = betwatch_find(match_title, q=q)
+    bw["signals"] = money_signals(s, bw.get("overlay"), q)
+    yorum = compact_yorum(s, matches, title=match_title or title, league=league, q=q, bw=bw, p6=p6)
     return {
         "title": title,
         "text": " ".join(lines),
@@ -1246,7 +1571,8 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
         "minimum_match_count": minimum,
         "pool_size": len(pool),
         "matches": matches[:limit],
-        "yorum": compact_yorum(s, matches, title=title, league=league),
+        "yorum": yorum,
+        "betwatch": bw,
     }
 
 

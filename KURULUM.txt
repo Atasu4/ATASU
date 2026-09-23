@@ -1,0 +1,10 @@
+ATASU 5.1.2 — Betfair/Betwatch birleşik yorum
+
+1. Bu app.py dosyasını sunucudaki eski app.py üzerine koy.
+2. Render / ortam değişkeni ekle:
+   BETWATCH_API_KEY = (Betwatch token)
+3. Yeniden başlat:
+   uvicorn app:app --host 0.0.0.0 --port 8000
+4. index.html ve data/history.json duruyorsa onlara dokunma.
+5. Kontrol: GET /api/selftest
+   betwatch_token: true olmalı.
