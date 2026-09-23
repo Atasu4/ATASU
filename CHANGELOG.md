@@ -1,3 +1,10 @@
+# ATASU 5.1.0
+
+- Bülten kutusu / tarih / üst Excel yapıştırma kalktı
+- Tek Maçkolik linki Model + Excel + +6 + LH’yi doldurur
+- Kısa rapor: KG, alt/üst, İY, 2. yarı, skor dağılımı
+- `/api/brief`
+
 # ATASU 4.9.4
 
 - Parser: `2,5 Alt/Üst 1.85 1.95` doğru; etiket oran sanılmıyor

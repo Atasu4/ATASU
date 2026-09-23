@@ -23,37 +23,20 @@ body{
     var(--ink);
 }
 .frame{max-width:1120px;margin:0 auto;padding:0 22px 80px}
-.mast{
-  padding:28px 0 0;
-  border-bottom:1px solid var(--line);
-}
+.mast{padding:28px 0 0;border-bottom:1px solid var(--line)}
 .mast-row{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
-.word{
-  font-family:"Cormorant Garamond",Georgia,serif;
-  font-size:42px;line-height:.9;margin:0;font-weight:500;letter-spacing:-.02em;
-  color:var(--gold);
-}
+.word{font-family:"Cormorant Garamond",Georgia,serif;font-size:42px;line-height:.9;margin:0;font-weight:500;letter-spacing:-.02em;color:var(--gold)}
 .word i{font-style:italic;color:var(--snow);font-weight:500}
 .meta{font:400 11px/1.4 "IBM Plex Mono",monospace;color:var(--fog);letter-spacing:.08em;text-transform:uppercase;margin-top:10px}
 .tabs{display:flex;gap:0;margin-top:22px}
-.tab{
-  background:none;border:0;border-bottom:1px solid transparent;
-  color:var(--fog);padding:12px 16px 14px;font:500 12px Manrope;
-  letter-spacing:.12em;text-transform:uppercase;cursor:pointer
-}
+.tab{background:none;border:0;border-bottom:1px solid transparent;color:var(--fog);padding:12px 16px 14px;font:500 12px Manrope;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
 .tab.on{color:var(--gold);border-bottom-color:var(--gold)}
 .stage{padding-top:28px}
-.card{
-  background:linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.01));
-  border:1px solid var(--line);padding:22px;
-}
+.card{background:linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.01));border:1px solid var(--line);padding:22px}
 .kicker{font:500 11px/1 "IBM Plex Mono",monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--gold2);margin:0 0 14px}
 label{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--fog);margin:12px 0 6px}
-textarea,input{
-  width:100%;background:#0c0d10;border:1px solid var(--line);color:var(--snow);
-  border-radius:0;padding:12px 14px;font:13px/1.5 "IBM Plex Mono",monospace
-}
-textarea{min-height:160px;resize:vertical}
+textarea,input{width:100%;background:#0c0d10;border:1px solid var(--line);color:var(--snow);border-radius:0;padding:12px 14px;font:13px/1.5 "IBM Plex Mono",monospace}
+textarea{min-height:88px;resize:vertical}
 textarea:focus,input:focus{outline:none;border-color:var(--gold2)}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .btns{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
@@ -72,18 +55,8 @@ th{color:var(--fog);font:500 10px/1 Manrope;letter-spacing:.1em;text-transform:u
 td{padding:10px 8px;border-bottom:1px solid rgba(232,210,160,.08);font-family:"IBM Plex Mono",monospace;font-size:12px}
 .verdict{padding:22px 22px 20px;margin:18px 0 8px;border:1px solid var(--line)}
 .verdict.go{background:linear-gradient(135deg, rgba(200,245,192,.08), transparent 55%);border-color:rgba(200,245,192,.28)}
-.verdict.pass{background:transparent}
-.v-kicker{font:500 10px/1 "IBM Plex Mono",monospace;letter-spacing:.18em;text-transform:uppercase;color:var(--gold2)}
-.v-title{font:500 36px/1.05 "Cormorant Garamond",serif;margin:8px 0 6px}
-.verdict.go .v-title{color:var(--go)}
-.v-sub{color:var(--fog);font-size:13px;max-width:52ch}
-.rules{display:grid;gap:8px;margin:8px 0 16px}
-.rule{display:grid;grid-template-columns:1fr auto;gap:4px 16px;padding:14px 16px;border:1px solid var(--line)}
-.rule-sel{font-family:"Cormorant Garamond",serif;font-size:22px}
-.rule-hit{font:500 13px "IBM Plex Mono",monospace;color:var(--gold)}
-.rule-why{grid-column:1/-1;color:var(--fog);font-size:12.5px}
-.chips{display:flex;flex-wrap:wrap;gap:8px}
-.chip{border:1px solid var(--line);padding:8px 10px;font:12px "IBM Plex Mono",monospace}
+.v-title{font:500 28px/1.15 "Cormorant Garamond",serif;margin:8px 0 10px}
+.v-sub{color:var(--fog);font-size:13.5px;line-height:1.55}
 iframe{width:100%;height:640px;border:1px solid var(--line);margin-top:14px;background:#000}
 @media(max-width:700px){
   .word{font-size:34px}
@@ -111,64 +84,41 @@ iframe{width:100%;height:640px;border:1px solid var(--line);margin-top:14px;back
   </header>
   <main class="stage">
   <section id="panel-model" class="card">
-    <p class="kicker">Excel eşleşme · İY / MS</p>
-    <label>Bülten</label>
-    <textarea id="txtModel" placeholder="Oran metnini yapıştır"></textarea>
+    <p class="kicker">Tek link · rapor</p>
+    <label>Maçkolik</label>
+    <input id="link" placeholder="https://www.mackolik.com/...">
     <div class="row">
-      <div><label>Maçkolik</label><input id="link" placeholder="https://www.mackolik.com/..."></div>
-      <div><label>Lig</label><input id="league" placeholder="BREK"></div>
-    </div>
-    <div class="row">
+      <div><label>Lig (opsiyonel)</label><input id="league" placeholder=""></div>
       <div><label>Tolerans</label><input id="tol" type="number" step="0.01" value="0.05"></div>
-      <div><label>Limit</label><input id="lim" type="number" value="200"></div>
     </div>
     <div class="row">
-      <div><label>Tarih</label><input id="bDate" placeholder="2026-09-22"></div>
-      <div><label>&nbsp;</label><button class="b" onclick="loadBulletin()">Bülten</button></div>
+      <div><label>Limit</label><input id="lim" type="number" value="200"></div>
+      <div><label>Maç adı</label><input id="lhQ" placeholder="Ev - Dep"></div>
     </div>
-    <div id="bulletinBox" class="mu"></div>
     <div class="btns">
-      <button class="b" onclick="pullLink()">Link</button>
-      <button class="g" onclick="scanModel()">Tara</button>
-      <button class="r" onclick="clearAll('txtModel','outModel')">Sil</button>
+      <button class="g" onclick="runAll()">Tara</button>
+      <button class="r" onclick="clearAll()">Sil</button>
     </div>
     <div id="outModel"></div>
   </section>
   <section id="panel-exact" class="card hidden">
-    <p class="kicker">Birebir oran</p>
-    <label>Bülten</label>
-    <textarea id="txtExact"></textarea>
-    <div class="btns">
-      <button class="g" onclick="scanExact()">Tara</button>
-      <button class="r" onclick="clearAll('txtExact','outExact')">Sil</button>
-    </div>
-    <div id="outExact"></div>
+    <p class="kicker">Excel birebir + eşleşen maçlar</p>
+    <div id="outExact" class="mu">Önce Model’de Tara.</div>
   </section>
   <section id="panel-p6" class="card hidden">
     <p class="kicker">+6 referans bant</p>
     <p class="mu">2,5Ü 1.20–1.28 · 3,5Ü 1.66–1.89 · 4,5Ü 2.64–3.14 · KG Var 1.22–1.87</p>
-    <label>Bülten</label>
-    <textarea id="txtP6"></textarea>
-    <div class="btns">
-      <button class="g" onclick="scanP6()">Analiz</button>
-      <button class="r" onclick="clearAll('txtP6','outP6')">Sil</button>
-    </div>
-    <div id="outP6"></div>
+    <div id="outP6" class="mu">Aynı linkten dolar.</div>
   </section>
   <section id="panel-lh" class="card hidden">
     <p class="kicker">LH Bet Predict</p>
-    <p class="mu">Ayrı model. ATASU kuralı history.json; LH form ve Monte Carlo.</p>
-    <div class="row">
-      <div><label>Maç</label><input id="lhQ" placeholder="Ev - Dep"></div>
-      <div><label>&nbsp;</label><button class="g" onclick="openLH()">Aç</button></div>
-    </div>
     <iframe id="lhFrame" title="LH Bet Predict" src="https://eagle-sapphire-quiet-bold.grok.me/"></iframe>
   </section>
   </main>
 </div>
 <script>
-
 const $ = id => document.getElementById(id);
+const LH = 'https://eagle-sapphire-quiet-bold.grok.me/';
 document.querySelectorAll('.tab').forEach(btn=>{
   btn.onclick=()=>{
     document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
@@ -176,10 +126,6 @@ document.querySelectorAll('.tab').forEach(btn=>{
     ['model','exact','p6','lh'].forEach(t=>$('panel-'+t).classList.toggle('hidden', t!==btn.dataset.t));
   };
 });
-try{
-  const saved = localStorage.getItem('atasu_txt');
-  if(saved) $('txtModel').value = saved;
-}catch(e){}
 fetch('/api/meta').then(r=>r.json()).then(m=>{
   $('metaLine').textContent = m.history_rows + ' kayit · ' + m.completed_rows + ' sonuclu · v' + m.version + (m.warning? ' · '+m.warning:'');
 }).catch(()=>{$('metaLine').textContent='API yok — uvicorn app:app --port 8000';});
@@ -224,96 +170,9 @@ function parseBulletin(text){
 function chips(odds){
   return Object.entries(odds).map(([k,v])=>'<span class="k" style="display:inline-block;margin:3px">'+k+': <b>'+v+'</b></span>').join(' ');
 }
-function clearAll(a,b){ $(a).value=''; $(b).innerHTML=''; }
-
-async function loadBulletin(){
-  const d = $('bDate').value.trim();
-  const q = d ? ('?date='+encodeURIComponent(d)) : '';
-  const r = await fetch('/api/bulletin'+q);
-  const j = await r.json();
-  if(!r.ok) return $('bulletinBox').innerHTML = '<span class="no">'+(j.detail||'bülten yok')+'</span>';
-  const rows = j.matches||[];
-  $('bulletinBox').innerHTML = '<div>'+j.count+' mac · '+j.date+'</div>' + rows.slice(0,80).map((m,i)=>
-    '<div class="k" style="margin:4px 0;cursor:pointer" onclick="pickMatch('+i+')">'+(m.time||'')+' '+(m.league||'')+' <b>'+m.home+' - '+m.away+'</b> '+(m.h||'-')+'/'+(m.d||'-')+'/'+(m.a||'-')+'</div>'
-  ).join('');
-  window._bulten = rows;
-}
-function pickMatch(i){
-  const m = (window._bulten||[])[i];
-  if(!m) return;
-  const lines = [
-    m.home+' - '+m.away,
-    m.h?('1 X 2 '+m.h+' '+m.d+' '+m.a):'',
-    (m.u25&&m.o25)?('2,5 Alt/Üst '+m.u25+' '+m.o25):''
-  ].filter(Boolean).join('\n');
-  $('txtModel').value = lines;
-  if(m.morebets) $('link').value = m.morebets;
-}
-async function pullLink(){
-  const url=$('link').value.trim();
-  if(!url) return alert('Link gir');
-  const r = await fetch('/api/match-link',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
-  const j = await r.json();
-  if(!r.ok) return alert(j.detail||'Link okunamadı');
-  $('txtModel').value = (j.title? j.title+'\n':'') + (j.text||'');
-}
-async function scanModel(){
-  try{ localStorage.setItem('atasu_txt', $('txtModel').value); }catch(e){}
-  const odds = parseBulletin($('txtModel').value);
-  $('outModel').innerHTML = '<div class="mu">Excel’e yerleştirilen oran</div>'+chips(odds);
-  if(Object.keys(odds).length<2) return $('outModel').innerHTML += '<p class="no">En az 2 oran lazım.</p>';
-  const body = {odds, tolerance: Number($('tol').value||0.05), league:$('league').value, limit:Number($('lim').value||200)};
-  const r = await fetch('/api/odds',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const j = await r.json();
-  if(!r.ok) return $('outModel').innerHTML += '<p class="no">'+(j.detail||'hata')+'</p>';
-  const rows = j.matches||[];
-  let html = '<div class="kpi">';
-  html += '<div class="k"><span>Eşleşen maç</span><b>'+j.matched+'</b></div>';
-  html += '<div class="k"><span>Karşılaştırılan</span><b>'+(j.searched_count||Object.keys(odds).length)+'</b></div>';
-  html += '<div class="k"><span>± tolerans</span><b>'+(j.tolerance??'-')+'</b></div></div>';
-  html += '<p class="mu">Aynı (veya ±tolerans) oranlara sahip geçmiş maçlar. Birden fazla oran tutarsa hepsi listelenir.</p>';
-  html += tableMatches(rows);
-  $('outModel').innerHTML += html;
-}
-async function scanExact(){
-  const odds = parseBulletin($('txtExact').value);
-  const r = await fetch('/api/exact-odds',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({odds,tolerance:0})});
-  const j = await r.json();
-  if(!r.ok) return $('outExact').innerHTML = '<p class="no">'+(j.detail||'hata')+'</p>';
-  $('outExact').innerHTML = chips(odds) + (j.categories||[]).map(c=>{
-    const tops = (c.summary&&c.summary.top||[]).map(o=>'<div>'+o.name+': %'+o.percent+'</div>').join('');
-    return '<div class="card"><b>'+c.category+'</b> · '+c.status+' · '+c.matched+tops+'</div>';
-  }).join('');
-}
-async function scanP6(){
-  const o = parseBulletin($('txtP6').value);
-  const payload = {o25:o.o25,o35:o.o35,o45:o.o45,g45:o.g45,btts:o.btts,iy05:o.iy05,nofirst:o.nofirst,g6:o.g6,iyu15:o.iyu15,iyo15:o.iyo15};
-  const r = await fetch('/api/plus6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-  const j = await r.json();
-  if(!r.ok) return $('outP6').innerHTML = '<p class="no">'+(j.detail||'hata')+'</p>';
-  const cls = j.compatibility_percent>=80?'ok': j.compatibility_percent>=40?'warn':'no';
-  let html = chips(o)+'<div class="k" style="margin:10px 0"><span class="'+cls+'">Uyumluluk %'+j.compatibility_percent+'</span> · '+j.matched_rules+'/'+j.total_rules+'</div>';
-  (j.rules||[]).forEach(x=>{
-    const val = x.value!=null ? x.value : ((x.values||[]).filter(v=>v!=null).join(' / ')||'-');
-    const rng = (x.range||[]).join('-');
-    html += '<div class="'+(x.match?'ok':'no')+'">'+(x.match?'OK':'X')+' '+x.name+' · '+val+' · ['+rng+']</div>';
-  });
-  html += '<p class="mu">'+(j.note||'')+'</p>';
-  $('outP6').innerHTML = html;
-}
-function openLH(){
-  const q = ($('lhQ').value||'').trim();
-  const base = 'https://eagle-sapphire-quiet-bold.grok.me/';
-  window.open(q ? (base + '?q=' + encodeURIComponent(q)) : base, '_blank');
-  const f = $('lhFrame');
-  if(f) f.src = base;
-}
-async function calcKelly(){
-  const body = {odds:Number($('kOdds').value), probability_percent:Number($('kP').value), bankroll: Number($('kBank').value)||null};
-  const r = await fetch('/api/kelly',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const j = await r.json();
-  if(!r.ok) return $('outKelly').innerHTML = '<p class="no">'+(j.detail||'hata')+'</p>';
-  $('outKelly').innerHTML = '<div class="kpi" style="margin-top:8px"><div class="k">Tam Kelly<b>%'+j.kelly_pct+'</b></div><div class="k">Yarım Kelly<b>%'+j.kelly_half_pct+'</b></div><div class="k">EV<b>'+j.expected_value+'</b></div><div class="k">Stake<b>'+(j.stake??'-')+'</b></div></div><p class="mu">'+j.formula+' · '+j.note+'</p>';
+function clearAll(){
+  ['outModel','outExact','outP6'].forEach(id=>$(id).innerHTML='');
+  $('link').value=''; $('lhQ').value='';
 }
 function tableMatches(rows){
   if(!rows||!rows.length) return '<p class="mu">Bu oranlara uyan geçmiş maç yok.</p>';
@@ -321,7 +180,88 @@ function tableMatches(rows){
   rows.forEach(r=>{
     body += '<tr><td>'+(r.date||'')+'</td><td>'+(r.league||'')+'</td><td>'+(r.home||'')+' — '+(r.away||'')+'</td><td>'+(r.ht||'—')+'</td><td>'+(r.ft||'—')+'</td><td>'+(r._matched_odds||0)+'/'+(r._compared_odds||0)+'</td></tr>';
   });
-  return '<table><tr><th>Tarih</th><th>Lig</th><th>Maç</th><th>İY</th><th>MS</th><th>Tutan oran</th></tr>'+body+'</table>';
+  return '<table><tr><th>Tarih</th><th>Lig</th><th>Maç</th><th>İY</th><th>MS</th><th>Tutan</th></tr>'+body+'</table>';
+}
+function pctLine(s, n, keys){
+  return keys.map(([lab,k])=>{
+    const v=s[k];
+    if(typeof v!=='number') return '';
+    return lab+' '+Math.round(n*v/100)+'/'+n+' (%'+v+')';
+  }).filter(Boolean).join(' · ');
+}
+
+async function runAll(){
+  const url = $('link').value.trim();
+  if(!url) return alert('Maçkolik linki gir');
+  $('outModel').innerHTML = '<p class="mu">Link okunuyor…</p>';
+  let text='', title='';
+  try{
+    const r = await fetch('/api/match-link',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+    const j = await r.json();
+    if(!r.ok) throw new Error(j.detail||'Link okunamadı');
+    text = j.text||''; title = j.title||'';
+    if(title && !$('lhQ').value) $('lhQ').value = title.replace(/\s*[|-].*$/,'').trim() || title;
+  }catch(e){
+    $('outModel').innerHTML = '<p class="no">'+(e.message||e)+'</p>';
+    return;
+  }
+  const odds = parseBulletin(text);
+  if(Object.keys(odds).length<2){
+    $('outModel').innerHTML = '<p class="no">Linkten en az 2 oran çıkmadı.</p><pre class="mu">'+text.slice(0,800)+'</pre>';
+    return;
+  }
+  const body = {odds, tolerance: Number($('tol').value||0.05), league:$('league').value, limit:Number($('lim').value||200)};
+  const [briefR, exactR, p6R] = await Promise.all([
+    fetch('/api/brief',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),
+    fetch('/api/exact-odds',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({odds,tolerance:0})}),
+    fetch('/api/plus6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      o25:odds.o25,o35:odds.o35,o45:odds.o45,g45:odds.g45,btts:odds.btts,
+      iy05:odds.iy05,nofirst:odds.nofirst,g6:odds.g6,iyu15:odds.iyu15,iyo15:odds.iyo15
+    })})
+  ]);
+  const brief = await briefR.json();
+  const exact = await exactR.json();
+  const p6 = await p6R.json();
+  if(!briefR.ok){ $('outModel').innerHTML = '<p class="no">'+(brief.detail||'hata')+'</p>'; return; }
+  const s = brief.stats||{};
+  const n = brief.sample||0;
+  const go = n>=8;
+  let html = '<div class="verdict '+(go?'go':'')+'">';
+  html += '<div class="kicker">Kısa rapor</div>';
+  html += '<div class="v-title">'+(title||'Maç')+'</div>';
+  html += '<p class="v-sub">'+brief.title+' '+brief.text+'</p></div>';
+  html += '<div class="mu">Okunan oran</div>'+chips(odds);
+  html += '<div class="kpi">';
+  html += '<div class="k"><span>Eşleşen</span><b>'+(brief.matched||0)+'</b></div>';
+  html += '<div class="k"><span>2,5 Üst</span><b>'+(s['2,5 Üst']??'—')+(s['2,5 Üst']!=null?'%':'')+'</b></div>';
+  html += '<div class="k"><span>KG Var</span><b>'+(s['KG Var']??'—')+(s['KG Var']!=null?'%':'')+'</b></div>';
+  html += '<div class="k"><span>2.Y 1+</span><b>'+(s['2.Y 1+ Gol']??'—')+(s['2.Y 1+ Gol']!=null?'%':'')+'</b></div></div>';
+  if(n){
+    html += '<p class="mu">'+pctLine(s,n,[['2,5 Üst','2,5 Üst'],['2,5 Alt','2,5 Alt'],['KG Var','KG Var'],['KG Yok','KG Yok'],['MS 1','MS 1'],['MS X','MS X'],['MS 2','MS 2']])+'</p>';
+    html += '<p class="mu">'+pctLine(s,n,[['İY 1','İY 1'],['İY X','İY X'],['İY 2','İY 2'],['2.Y 1+','2.Y 1+ Gol'],['2.Y 2+','2.Y 2+ Gol'],['İki yarı gol','Her iki yarı gol']])+'</p>';
+  }
+  $('outModel').innerHTML = html;
+
+  let ex = chips(odds);
+  (exact.categories||[]).forEach(c=>{
+    const tops = (c.summary&&c.summary.top||[]).map(o=>o.name+': %'+o.percent).join(' · ');
+    ex += '<div class="k" style="margin:8px 0"><b>'+c.category+'</b> · '+c.status+' · '+c.matched+(tops?' · '+tops:'')+'</div>';
+  });
+  ex += tableMatches(brief.matches||[]);
+  $('outExact').innerHTML = ex;
+
+  const cls = p6.compatibility_percent>=80?'ok': p6.compatibility_percent>=40?'mu':'no';
+  let phtml = chips(odds)+'<div class="k" style="margin:10px 0"><span class="'+cls+'">Uyumluluk %'+p6.compatibility_percent+'</span> · '+p6.matched_rules+'/'+p6.total_rules+'</div>';
+  (p6.rules||[]).forEach(x=>{
+    const val = x.value!=null ? x.value : ((x.values||[]).filter(v=>v!=null).join(' / ')||'-');
+    const rng = (x.range||[]).join('-');
+    phtml += '<div class="'+(x.match?'ok':'no')+'">'+(x.match?'OK':'X')+' '+x.name+' · '+val+' · ['+rng+']</div>';
+  });
+  $('outP6').innerHTML = phtml;
+
+  const q = ($('lhQ').value||title||'').trim();
+  const f = $('lhFrame');
+  if(f) f.src = q ? (LH+'?q='+encodeURIComponent(q)) : LH;
 }
 </script>
 </body>

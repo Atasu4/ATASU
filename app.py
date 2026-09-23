@@ -35,7 +35,7 @@ GROUPS = [
     ("Karşılıklı Gol", ["btts", "nobtts"]),
     ("İY 1,5 Alt/Üst", ["iyu15", "iyo15"]),
 ]
-app = FastAPI(title="ATASU Intelligence", version="5.0.0")
+app = FastAPI(title="ATASU Intelligence", version="5.1.0")
 WEIGHTS = {
     "h": 1.2, "d": 1.0, "a": 1.2,
     "u25": 1.1, "o25": 1.1,
@@ -600,7 +600,7 @@ def meta():
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "markets": MARKETS,
-        "version": "5.0.0",
+        "version": "5.1.0",
         "warning": HISTORY_WARNING,
         "rule": "Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır.",
     }
@@ -833,7 +833,7 @@ def match_link(req: LinkReq):
 def selftest():
     return {
         "ok": True,
-        "version": "5.0.0",
+        "version": "5.1.0",
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "endpoints": ["/api/match-link", "/api/odds", "/api/exact-odds", "/api/plus6"],
@@ -1076,6 +1076,88 @@ class Plus6Req(BaseModel):
     iyo15: float | None = None
 
 
+def brief_from_odds(q, tol=0.05, league="", limit=200):
+    pool, matches, minimum, _ = match_rows(q, tol, league)
+    s = stats(matches)
+    n = s.get("sample_ft") or 0
+    p6 = plus6_payload(q)
+    lines = []
+    title = f"{n} eşleşen sonuçlu maç (±{tol}" + (f", {league}" if league.strip() else "") + ")."
+    if n:
+        parts = []
+        for label, key in [
+            ("2,5 Üst", "2,5 Üst"), ("2,5 Alt", "2,5 Alt"),
+            ("KG Var", "KG Var"), ("KG Yok", "KG Yok"),
+            ("3,5 Üst", "3,5 Üst"), ("6+ Gol", "6+ Gol"),
+            ("MS 1", "MS 1"), ("MS X", "MS X"), ("MS 2", "MS 2"),
+        ]:
+            v = s.get(key)
+            if isinstance(v, (int, float)):
+                c = round(n * v / 100)
+                parts.append(f"{label} {c}/{n} (%{v})")
+        lines.append("Sonuç dağılımı: " + " · ".join(parts[:8]) + ".")
+        iy = []
+        for label in ["İY 1", "İY X", "İY 2", "2.Y 1+ Gol", "2.Y 2+ Gol", "Her iki yarı gol"]:
+            v = s.get(label)
+            if isinstance(v, (int, float)):
+                iy.append(f"{label} %{v}")
+        if iy:
+            lines.append("İY / yarı: " + " · ".join(iy) + ".")
+        if s.get("avg_goals") is not None:
+            lines.append(f"Ortalama gol {s['avg_goals']} (ev {s.get('avg_home_goals')} / dep {s.get('avg_away_goals')}).")
+        tops = s.get("top_scores") or []
+        if tops:
+            lines.append("Sık skor: " + ", ".join(f"{t['score']} %{t['percent']}" for t in tops[:4]) + ".")
+    else:
+        lines.append("Bu oran bandında sonuçlu geçmiş maç yok.")
+    lines.append(f"+6 bant uyumu %{p6['compatibility_percent']} ({p6['matched_rules']}/{p6['total_rules']}).")
+    return {
+        "title": title,
+        "text": " ".join(lines),
+        "sample": n,
+        "stats": s,
+        "plus6": p6,
+        "matched": len(matches),
+        "minimum_match_count": minimum,
+        "pool_size": len(pool),
+        "matches": matches[:limit],
+    }
+
+
+def plus6_payload(q):
+    o45 = q.get("o45") if q.get("o45") is not None else q.get("g45")
+    rules = [
+        ("2,5 Üst", q.get("o25"), 1.20, 1.28),
+        ("3,5 Üst", q.get("o35"), 1.66, 1.89),
+        ("4,5 Üst / g45", o45, 2.64, 3.14),
+        ("KG Var", q.get("btts"), 1.22, 1.87),
+    ]
+    output = []
+    hit = 0
+    for name, v, lo, hi in rules:
+        m = v is not None and lo <= v <= hi
+        hit += bool(m)
+        output.append({"name": name, "value": v, "range": [lo, hi], "match": bool(m)})
+    last = (q.get("iy05") is not None and 1.05 <= q["iy05"] <= 1.08) or (
+        q.get("nofirst") is not None and 22.10 <= q["nofirst"] <= 26.00
+    )
+    if not last and q.get("g6") is not None and q["g6"] <= 9.5:
+        last = True
+    hit += bool(last)
+    output.append({
+        "name": "İY 0,5 / İlk Gol Olmaz / 6+ Gol proxy",
+        "values": [q.get("iy05"), q.get("nofirst"), q.get("g6")],
+        "ranges": [[1.05, 1.08], [22.10, 26.00], [None, 9.5]],
+        "match": bool(last),
+    })
+    return {
+        "matched_rules": hit,
+        "total_rules": 5,
+        "compatibility_percent": round(hit / 5 * 100),
+        "rules": output,
+    }
+
+
 class KellyReq(BaseModel):
     odds: float
     probability_percent: float
@@ -1105,36 +1187,27 @@ def kelly_api(req: KellyReq):
 
 @app.post("/api/plus6")
 def plus6(q: Plus6Req):
-    o45 = q.o45 if q.o45 is not None else q.g45
-    rules = [
-        ("2,5 Üst", q.o25, 1.20, 1.28),
-        ("3,5 Üst", q.o35, 1.66, 1.89),
-        ("4,5 Üst / g45", o45, 2.64, 3.14),
-        ("KG Var", q.btts, 1.22, 1.87),
-    ]
-    output = []
-    hit = 0
-    for name, v, lo, hi in rules:
-        m = v is not None and lo <= v <= hi
-        hit += bool(m)
-        output.append({"name": name, "value": v, "range": [lo, hi], "match": bool(m)})
-    last = (q.iy05 is not None and 1.05 <= q.iy05 <= 1.08) or (q.nofirst is not None and 22.10 <= q.nofirst <= 26.00)
-    if not last and q.g6 is not None and q.g6 <= 9.5:
-        last = True
-    hit += bool(last)
-    output.append({
-        "name": "İY 0,5 / İlk Gol Olmaz / 6+ Gol proxy",
-        "values": [q.iy05, q.nofirst, q.g6],
-        "ranges": [[1.05, 1.08], [22.10, 26.00], [None, 9.5]],
-        "match": bool(last),
-    })
+    d = q.dict() if hasattr(q, "dict") else q.model_dump()
+    out = plus6_payload(d)
     note = "Yalnızca kayıtlı +6 referans bantlarıyla karşılaştırmadır. o45 yoksa g45 kullanılır."
     if HISTORY_WARNING:
         note = HISTORY_WARNING + " " + note
-    return {
-        "matched_rules": hit,
-        "total_rules": 5,
-        "compatibility_percent": round(hit / 5 * 100),
-        "rules": output,
-        "note": note,
-    }
+    out["note"] = note
+    return out
+
+
+@app.post("/api/brief")
+def brief(req: OddsReq):
+    q = {}
+    for k, v in req.odds.items():
+        if k not in MARKETS and k not in ("iy05", "nofirst", "o45"):
+            continue
+        try:
+            f = float(v)
+        except Exception:
+            continue
+        if f > 1:
+            q[k] = f
+    if len(q) < 2:
+        raise HTTPException(400, "En az 2 oran lazım.")
+    return brief_from_odds(q, req.tolerance, req.league, req.limit)
