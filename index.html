@@ -111,8 +111,10 @@ td{padding:10px 8px;border-bottom:1px solid rgba(232,210,160,.08);font-family:"I
     <div class="btns">
       <button class="g" onclick="runAll()">Tara</button>
       <button class="b" onclick="loadBulletin()">Günlük bülten</button>
+      <button class="b" onclick="runUpdate()">Güncelle</button>
       <button class="r" onclick="clearAll()">Sil</button>
     </div>
+    <p class="hint" id="updHint">Canlı tablo 25 dk cache. Güncelle: cache sil + biten maçları history’e yaz. Kod zip’i kendi değiştirmez.</p>
     <div id="bulletinBox"></div>
     <div id="outModel"></div>
   </section>
@@ -313,7 +315,7 @@ async function analyzeText(text, title){
   html += '<div class="kicker">Kısa rapor</div>';
   html += '<div class="v-title">'+esc(title||'Maç')+'</div>';
   html += '<p class="v-sub">'+esc(brief.text||brief.title||'')+'</p></div>';
-  html += '<p class="hint">Kutular oran değil. Benzer maçlarda o işin gelme yüzdesi.</p>';
+  html += '<p class="hint">Kutular benzer maç yüzdesi. 0 ise model/tablo konuşur; birebir oran aranmaz.</p>';
   html += '<div class="kpi">';
   html += '<div class="k"><span>Eşleşen maç</span><b>'+(brief.matched||0)+'</b></div>';
   html += '<div class="k"><span>2,5 üst geldi</span><b>'+(s['2,5 Üst']!=null?s['2,5 Üst']+'%':'—')+'</b></div>';
@@ -372,6 +374,30 @@ async function analyzeText(text, title){
   });
   $('outP6').innerHTML = phtml;
 }
+
+async function runUpdate(){
+  const h = $('updHint');
+  if(h) h.textContent = 'Güncelleniyor…';
+  try{
+    const r = await fetch('/api/update', {method:'POST'});
+    const j = await r.json();
+    if(!r.ok) throw new Error(j.detail||'hata');
+    if(h) h.textContent = 'Güncelleme: +'+j.added+' maç · havuz '+j.history_n+' · cache silindi '+j.cache_cleared+' · '+j.last;
+    localStorage.setItem('atasu_last_upd', j.last||'');
+  }catch(e){
+    if(h) h.textContent = 'Güncelleme alınamadı: '+e.message;
+  }
+}
+async function pingUpdate(){
+  try{
+    const r = await fetch('/api/update');
+    const j = await r.json();
+    const h = $('updHint');
+    if(h && j.last) h.textContent = 'Son otomatik hasat: '+j.last+' · havuz '+j.history_n;
+  }catch(_){}
+}
+pingUpdate();
+setInterval(runUpdate, 15*60*1000);
 </script>
 </body>
 </html>

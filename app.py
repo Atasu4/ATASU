@@ -43,7 +43,17 @@ from mackolik_standing import (
     tercih_from_open,
     open_markets,
 )
-app = FastAPI(title="ATASU Intelligence", version="5.2.1")
+from updater import run_update, remember_season, _load_state
+
+
+def _standing(home, away="", league=""):
+    pack = mk_resolve_match(home, away, league)
+    if pack and pack.get("season_id"):
+        remember_season(pack["season_id"])
+    return pack
+
+
+app = FastAPI(title="ATASU Intelligence", version="5.3.0")
 WEIGHTS = {
     "h": 1.2, "d": 1.0, "a": 1.2,
     "u25": 1.1, "o25": 1.1,
@@ -147,52 +157,82 @@ def prob_gap(a, b):
     return abs(pa - pb)
 
 
+CORE_KEYS = ("h", "d", "a", "o25", "u25", "btts")
+
+
 def match_rows(q, tol, league=""):
     pool = [r for r in HISTORY if score(r.get("ft")) is not None]
-    if league.strip():
-        pool = [r for r in pool if league.strip().casefold() in str(r.get("league", "")).casefold()]
-    # odds-tol 0.05 at 2.00 ≈ 1.2 probability points; keep both checks
-    p_tol = max(0.008, min(0.08, tol / 4.0))
-    out = []
-    for r in pool:
-        diffs = {}; pgaps = {}; compared = matched = 0
-        wsum = wscore = 0.0
-        for k, target in q.items():
-            v = r.get(k)
-            if v is None:
+    lig = league.strip()
+    lig_pool = pool
+    if lig:
+        folded = lig.casefold()
+        lig_pool = [r for r in pool if folded in str(r.get("league", "")).casefold()]
+        # Lig kodu history ile uyuşmazsa havuzu öldürme
+        if len(lig_pool) < 80:
+            lig_pool = pool
+    p_tol = max(0.012, min(0.12, tol / 2.5))
+    core_q = {k: v for k, v in q.items() if k in CORE_KEYS}
+
+    def score_pool(src, use_q, use_tol, use_ptol, min_hit):
+        out = []
+        for r in src:
+            diffs = {}; pgaps = {}; compared = matched = 0
+            wsum = wscore = 0.0
+            for k, target in use_q.items():
+                v = r.get(k)
+                if v is None:
+                    continue
+                try:
+                    v = float(v)
+                except Exception:
+                    continue
+                compared += 1
+                d = abs(v - target)
+                g = prob_gap(v, target)
+                diffs[k] = round(d, 3)
+                if g is not None:
+                    pgaps[k] = round(g * 100, 2)
+                hit = d <= use_tol or (g is not None and g <= use_ptol)
+                matched += int(hit)
+                w = WEIGHTS.get(k, 0.7)
+                wsum += w
+                denom = max(use_ptol * 3, 1e-6)
+                closeness = 1.0 - min(1.0, (g if g is not None else d / max(target, 1)) / denom)
+                wscore += w * max(0.0, closeness)
+            if compared < 2:
                 continue
-            try:
-                v = float(v)
-            except Exception:
+            if matched < min_hit:
                 continue
-            compared += 1
-            d = abs(v - target)
-            g = prob_gap(v, target)
-            diffs[k] = round(d, 3)
-            if g is not None:
-                pgaps[k] = round(g * 100, 2)
-            hit = d <= tol or (g is not None and g <= p_tol)
-            matched += int(hit)
-            w = WEIGHTS.get(k, 0.7)
-            wsum += w
-            closeness = 1.0 - min(1.0, (g if g is not None else d / max(target, 1)) / max(p_tol * 3, 1e-6))
-            wscore += w * max(0.0, closeness)
-        if compared < 2:
-            continue
-        x = dict(r)
-        x["_matched_odds"] = matched
-        x["_compared_odds"] = compared
-        x["_match_ratio"] = round(100 * matched / compared, 1)
-        x["_differences"] = diffs
-        x["_prob_gaps"] = pgaps
-        x["_total_difference"] = round(sum(diffs.values()), 3)
-        x["_similarity"] = round(100 * wscore / wsum, 1) if wsum else 0
-        out.append(x)
-    searched = len(q)
-    minimum = max(2, (searched + 1) // 2)
-    matches = [x for x in out if x["_matched_odds"] >= minimum]
-    matches.sort(key=lambda x: (-x["_similarity"], -x["_matched_odds"], x["_total_difference"]))
-    return pool, matches, minimum, False
+            x = dict(r)
+            x["_matched_odds"] = matched
+            x["_compared_odds"] = compared
+            x["_match_ratio"] = round(100 * matched / compared, 1)
+            x["_differences"] = diffs
+            x["_prob_gaps"] = pgaps
+            x["_total_difference"] = round(sum(diffs.values()), 3)
+            x["_similarity"] = round(100 * wscore / wsum, 1) if wsum else 0
+            out.append(x)
+        out.sort(key=lambda x: (-x["_similarity"], -x["_matched_odds"], x["_total_difference"]))
+        return out
+
+    # 1) çekirdek piyasalar, verilen tol
+    minimum = 2
+    matches = score_pool(lig_pool, core_q or q, tol, p_tol, 2)
+    fallback = False
+    # 2) genişlet
+    if len(matches) < 12:
+        wider = score_pool(lig_pool, core_q or q, max(tol, 0.12), max(p_tol, 0.04), 2)
+        if len(wider) > len(matches):
+            matches, fallback = wider, True
+    # 3) tüm havuz + 1X2 yakınlığı
+    if len(matches) < 8:
+        ms_q = {k: v for k, v in q.items() if k in ("h", "d", "a")}
+        if len(ms_q) >= 2:
+            soft = score_pool(pool, ms_q, 0.18, 0.05, 2)
+            if soft:
+                matches, fallback = soft, True
+                minimum = 2
+    return pool, matches, minimum, fallback
 
 
 def expected_goals(q):
@@ -800,10 +840,15 @@ def _team_hit(a, b):
     if sa and sb and (sa <= sb or sb <= sa):
         return 2
     inter = sa & sb
-    if len(inter) >= 1 and any(len(x) >= 4 for x in inter):
+    if len(inter) >= 1 and any(len(x) >= 3 for x in inter):
         return 2
     if inter:
         return 1
+    # prefix 5+
+    for x in sa:
+        for y in sb:
+            if len(x) >= 5 and len(y) >= 5 and (x.startswith(y[:5]) or y.startswith(x[:5])):
+                return 2
     return 0
 
 
@@ -901,7 +946,12 @@ def betwatch_find(title="", home="", away="", q=None):
             continue
         scored.append((sc, m))
     scored.sort(key=lambda x: -x[0])
-    best = scored[0][1] if scored and scored[0][0] >= 2 else None
+    best = None
+    if scored:
+        if scored[0][0] >= 2:
+            best = scored[0][1]
+        elif scored[0][0] >= 1 and (len(scored) == 1 or scored[0][0] > scored[1][0]):
+            best = scored[0][1]
     overlay = []
     if best and q:
         for k, hist_odd in q.items():
@@ -1038,7 +1088,7 @@ def meta():
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "markets": MARKETS,
-        "version": "5.2.1",
+        "version": "5.2.3",
         "warning": HISTORY_WARNING,
         "rule": "Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır. Puan durumu Maçkolik arşivinden çekilir.",
     }
@@ -1309,7 +1359,7 @@ def from_mac(req: MacIdReq):
 def selftest():
     return {
         "ok": True,
-        "version": "5.2.1",
+        "version": "5.2.3",
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "endpoints": ["/api/match-link", "/api/odds", "/api/exact-odds", "/api/plus6", "/api/betwatch"],
@@ -1436,7 +1486,7 @@ def odds_scan(req: OddsReq):
     ev_name, dep_name = _parse_teams(req.title or "")
     standing = None
     try:
-        standing = mk_resolve_match(ev_name or "", dep_name or "", req.league or "")
+        standing = _standing(ev_name or "", dep_name or "", req.league or "")
     except Exception:
         standing = None
     yorum = compact_yorum(
@@ -1488,9 +1538,15 @@ EXACT_CATEGORIES = {
 }
 
 
-def exact_equal(a, b):
+def exact_equal(a, b, band=0.03):
     try:
-        return float(a) == float(b)
+        fa, fb = float(a), float(b)
+        if fa == fb:
+            return True
+        if abs(fa - fb) <= band:
+            return True
+        g = prob_gap(fa, fb)
+        return g is not None and g <= 0.012
     except Exception:
         return False
 
@@ -1552,7 +1608,7 @@ def exact_odds_scan(req: OddsReq):
             continue
         categories.append({
             "category": name,
-            "status": "EŞLEŞME VAR" if rows else "BİREBİR EŞLEŞME YOK",
+            "status": "EŞLEŞME VAR" if rows else "YAKIN EŞLEŞME YOK",
             "used_odds": {k: q[k] for k in active},
             "matched": len(rows),
             "summary": exact_summary(rows, name),
@@ -1650,7 +1706,156 @@ def _pct(v):
     return None if not isinstance(v, (int, float)) else v
 
 
+def _ima_pct(odd):
+    try:
+        o = float(odd)
+        return round(100.0 / o, 1) if o > 1 else None
+    except Exception:
+        return None
+
+
+def narrative_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, lh=None, standing=None):
+    """Tek parça analist yorumu — iddaa açık oranları merkeze alır."""
+    q = q or {}
+    n = s.get("sample_ft") or 0
+    head = (title.split("|")[0].strip() if title else "Maç")
+    dc = ((lh or {}).get("dixon_coles") or {}) if lh else {}
+    an = ((standing or {}).get("analysis") or {}) if standing else {}
+    hr = ((standing or {}).get("home_row") or {}) if standing else {}
+    ar = ((standing or {}).get("away_row") or {}) if standing else {}
+    ranked = score_open_picks(q, s, lh, standing)
+    tercih = tercih_from_open(ranked, n)
+
+    def g(name):
+        v = s.get(name)
+        return v if isinstance(v, (int, float)) else None
+
+    o25_h, kg_h, ms1, msx, ms2 = g("2,5 Üst"), g("KG Var"), g("MS 1"), g("MS X"), g("MS 2")
+    o35_h, sh = g("3,5 Üst"), g("2.Y 1+ Gol")
+    avg = s.get("avg_goals")
+
+    ev_n = hr.get("name") or ""
+    dep_n = ar.get("name") or ""
+    mas = head.rstrip(".")
+    p1 = []
+    ac = []
+    if ev_n and dep_n:
+        ac.append(f"{ev_n}–{dep_n}")
+    else:
+        ac.append(mas)
+    if hr and ar and hr.get("pos") and ar.get("pos"):
+        ac.append(
+            f"ligde {hr['pos']}. ({hr.get('pts')}p, {hr.get('gf')}-{hr.get('ga')}) "
+            f"× {ar['pos']}. ({ar.get('pts')}p, {ar.get('gf')}-{ar.get('ga')})"
+        )
+    if an.get("exp_total") is not None:
+        ac.append(f"taraf temposu {an['exp_home']}+{an['exp_away']} ≈ {an['exp_total']} gol")
+    hop, aop = an.get("home_opta") or {}, an.get("away_opta") or {}
+    if hop and aop:
+        ac.append(
+            f"şut profili {hop.get('shots_pg')}/{hop.get('sot_pg')} vs {aop.get('shots_pg')}/{aop.get('sot_pg')}, "
+            f"TSO %{hop.get('possession')}–%{aop.get('possession')}"
+        )
+    if an.get("combo_o25") is not None or an.get("combo_kg") is not None:
+        ac.append(
+            "ev sahada / deplasmanda "
+            + (f"2.5Ü %{an.get('combo_o25')}" if an.get("combo_o25") is not None else "")
+            + (" · " if an.get("combo_o25") is not None and an.get("combo_kg") is not None else "")
+            + (f"KG %{an.get('combo_kg')}" if an.get("combo_kg") is not None else "")
+        )
+    if an.get("flags"):
+        ac.append(", ".join(an["flags"]))
+    p1.append("Maç: " + "; ".join(ac) + ".")
+
+    # 2. İddaa fiyatı vs okuma
+    p2 = []
+    checks = [
+        ("h", "MS 1", ms1, dc.get("ms1")),
+        ("a", "MS 2", ms2, dc.get("ms2")),
+        ("d", "MS X", msx, dc.get("msx")),
+        ("o25", "2,5 Üst", o25_h, dc.get("p_o25")),
+        ("o35", "3,5 Üst", o35_h, None),
+        ("btts", "KG Var", kg_h, dc.get("p_btts")),
+    ]
+    pahali, ucuz, kisa = [], [], []
+    for key, lab, hist, model in checks:
+        if key not in q:
+            continue
+        odd = q[key]
+        ima = _ima_pct(odd)
+        okuma = None
+        if isinstance(hist, (int, float)) and isinstance(model, (int, float)):
+            okuma = round(0.55 * hist + 0.45 * model, 1)
+        elif isinstance(hist, (int, float)):
+            okuma = hist
+        elif isinstance(model, (int, float)):
+            okuma = model
+        if ima is None:
+            continue
+        if odd < 1.40:
+            kisa.append(f"{lab} {odd} (iddaa ima %{ima}" + (f", okuma %{okuma}" if okuma is not None else "") + ")")
+        elif okuma is not None and okuma <= ima - 8:
+            pahali.append(f"{lab} {odd} ima %{ima} / okuma %{okuma}")
+        elif okuma is not None and okuma >= ima + 8:
+            ucuz.append(f"{lab} {odd} ima %{ima} / okuma %{okuma}")
+    if q.get("a") and q.get("h") and q["a"] < q["h"]:
+        p2.append(
+            f"İddaa bu maçı deplasman favorisi satıyor (MS 2 {q['a']}, ima %{_ima_pct(q['a'])}; "
+            f"MS 1 {q['h']}, ima %{_ima_pct(q['h'])})."
+        )
+    elif q.get("h") and q.get("a"):
+        p2.append(
+            f"İddaa ev favorisi satıyor (MS 1 {q['h']}, ima %{_ima_pct(q['h'])}; "
+            f"MS 2 {q['a']}, ima %{_ima_pct(q['a'])})."
+        )
+    if n:
+        p2.append(
+            f"Aynı fiyat bandındaki {n} sonuç bunu doğrulamıyor: "
+            f"MS {ms1}/{msx}/{ms2}, 2.5Ü %{o25_h}, 3.5Ü %{o35_h}, KG %{kg_h}, "
+            f"2. yarı gol %{sh}"
+            + (f", ortalama {avg}." if avg else ".")
+        )
+    else:
+        p2.append("History bu fiyatı henüz yakalamadı; masa modeli ve tabloya bakıyor.")
+    if dc.get("ms1") is not None:
+        p2.append(
+            f"Poisson/Dixon-Coles λ {dc.get('lambda_home')}–{dc.get('lambda_away')} → "
+            f"MS {dc.get('ms1')}–{dc.get('msx')}–{dc.get('ms2')}, 2.5Ü %{dc.get('p_o25')}, KG %{dc.get('p_btts')}."
+        )
+    if kisa:
+        p2.append("Kısa iddaa fiyatı (kenar yok, birim şişirme): " + "; ".join(kisa) + ".")
+    if pahali:
+        p2.append("Pahalı açık iş — kupon dışı: " + "; ".join(pahali) + ".")
+    if ucuz:
+        p2.append("Masanın ucuz bıraktığı açık iş: " + "; ".join(ucuz) + ".")
+    if not kisa and not pahali and not ucuz:
+        p2.append("Açık fiyatlar adil; burada edge avlanmaz.")
+
+    # 3. Para / +6 kısa
+    p3 = []
+    if bw and bw.get("matched"):
+        m = bw["matched"]
+        p3.append(f"Exchange eşleşti: {m.get('home')}–{m.get('away')}.")
+    elif title:
+        p3.append("Exchange bu isimle açılmadı; kuponu teyit etmez.")
+    if p6 and p6.get("compatibility_percent") is not None:
+        pc = p6.get("compatibility_percent")
+        if pc >= 70:
+            p3.append(f"+6 bandı uyumlu (%{pc}).")
+        elif pc <= 35:
+            p3.append(f"+6 senaryosu değil (%{pc}).")
+
+    lines = [" ".join(p1), "", " ".join(p2)]
+    if p3:
+        lines += ["", " ".join(p3)]
+    lines += ["", "[[ATASU_TERCIH]]"]
+    lines.extend(tercih[:6])
+    lines.append("[[/ATASU_TERCIH]]")
+    return "\n".join(lines)
+
+
 def compact_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, lh=None, standing=None):
+    return narrative_yorum(s, matches, title, league, q, bw, p6, lh, standing)
     q = q or {}
     n = s.get("sample_ft") or 0
     ev, dep = _parse_teams(title)
@@ -1899,7 +2104,7 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
     ev_name, dep_name = _parse_teams(match_title)
     standing = None
     try:
-        standing = mk_resolve_match(ev_name or "", dep_name or "", league or "")
+        standing = _standing(ev_name or "", dep_name or "", league or "")
     except Exception as e:
         standing = {"ok": False, "note": "Puan durumu alınamadı: " + str(e)[:80]}
     lines = []
@@ -2056,7 +2261,7 @@ def standing_api(req: StandingReq):
     if not home and not away:
         raise HTTPException(400, "Maç adı veya takım lazım.")
     try:
-        pack = mk_resolve_match(home, away, req.league or "")
+        pack = _standing(home, away, req.league or "")
     except Exception as e:
         raise HTTPException(502, "Puan durumu alınamadı: " + str(e)[:120])
     return pack
@@ -2065,4 +2270,30 @@ def standing_api(req: StandingReq):
 @app.get("/api/standing")
 def standing_get(title: str = "", home: str = "", away: str = "", league: str = ""):
     return standing_api(StandingReq(title=title, home=home, away=away, league=league))
+
+
+@app.post("/api/update")
+def api_update():
+    global HISTORY
+    try:
+        out = run_update(HISTORY)
+        HISTORY = json.loads(HISTORY_FILE.read_text(encoding="utf-8")) if HISTORY_FILE.exists() else HISTORY
+        out["history_n"] = len(HISTORY)
+        out["version"] = "5.2.3"
+        return out
+    except Exception as e:
+        raise HTTPException(502, "Güncelleme alınamadı: " + str(e)[:160])
+
+
+@app.get("/api/update")
+def api_update_status():
+    st = _load_state()
+    return {
+        "version": "5.2.3",
+        "history_n": len(HISTORY),
+        "last": st.get("last"),
+        "added_total": st.get("added"),
+        "seasons": st.get("seasons"),
+        "note": "Kod kendini yazmaz. POST /api/update canlı cache + history hasadı yapar.",
+    }
 

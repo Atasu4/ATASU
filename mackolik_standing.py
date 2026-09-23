@@ -204,10 +204,17 @@ def fetch_standing(season_id: int) -> dict | None:
             "status": r[2],
             "home_id": r[3],
             "away_id": r[4],
+            "hh": r[6] if len(r) > 6 else None,
+            "ha": r[7] if len(r) > 7 else None,
+            "hg": r[6] if False else None,
+            "ft_raw": r[8],
             "ft": str(r[8]).replace(" ", ""),
             "h": r[10] if len(r) > 10 else None,
             "d": r[11] if len(r) > 11 else None,
             "a": r[12] if len(r) > 12 else None,
+            "o25": r[16] if len(r) > 16 else None,
+            "u25": r[17] if len(r) > 17 else None,
+            "raw": r,
         })
     fixture = []
     for f in data.get("f") or []:
@@ -951,25 +958,74 @@ def score_open_picks(q: dict, stats_obj: dict | None, lh: dict | None, pack: dic
     return ranked
 
 
+def _ima(odd):
+    try:
+        o = float(odd)
+        return round(100.0 / o, 1) if o > 1 else None
+    except Exception:
+        return None
+
+
+MIN_ODD = 1.30
+MAX_ODD = 2.35
+MIN_BLEND = 63.0
+MIN_LAYER = 2
+
+
+def _layers(x) -> int:
+    n = 0
+    if isinstance(x.get("hist_percent"), (int, float)) and x["hist_percent"] >= 58:
+        n += 1
+    if isinstance(x.get("model_percent"), (int, float)) and x["model_percent"] >= 58:
+        n += 1
+    if isinstance(x.get("blend_percent"), (int, float)) and x["blend_percent"] >= 62:
+        n += 1
+    return n
+
+
 def tercih_from_open(ranked: list[dict], n_hist: int) -> list[str]:
+    """Minimum kayıp: yalnızca 1.30–2.35 açık iddaa. 1.07–1.10 yok. Hiza yoksa GEÇ."""
     if not ranked:
-        return ["Açık iddaa oranı yok; tercih yazılmaz."]
-    lines = ["Sadece bültende açık duran piyasalar değerlendirildi."]
-    good = [x for x in ranked if x.get("ev") is not None and x["ev"] >= 0.05 and (x.get("blend_percent") or 0) >= 48]
-    if not good:
-        top = ranked[0]
-        lines.append(
-            f"Değer zayıf. En az kötü açık seçenek: {top['name']} {top['odds']}"
-            + (f" (karışık %{top['blend_percent']})" if top.get("blend_percent") else "")
-            + "."
-        )
-        lines.append("Banko yok. Kuponu küçük tut veya geç.")
+        return ["Bültende açık iddaa oranı yok.", "KARAR: GEÇ"]
+    band = []
+    disi = []
+    for x in ranked:
+        try:
+            o = float(x.get("odds") or 0)
+        except Exception:
+            continue
+        if MIN_ODD <= o <= MAX_ODD:
+            band.append(x)
+        else:
+            disi.append(x)
+    band.sort(key=lambda x: (-_layers(x), -(x.get("blend_percent") or 0)))
+    lines = [f"Kupon bandı {MIN_ODD}–{MAX_ODD}. 1.10'luk favori yok sayılır."]
+    if disi:
+        kisa = [f"{x['name']} {x['odds']}" for x in disi if float(x.get("odds") or 0) < MIN_ODD]
+        if kisa:
+            lines.append("Band dışı kısa (yok sayıldı): " + ", ".join(kisa[:4]) + ".")
+    if not band:
+        lines.append("Açık iddaada bu bantta iş yok.")
+        lines.append("KARAR: GEÇ")
+        return lines[:6]
+    x = band[0]
+    p = x.get("blend_percent")
+    h = x.get("hist_percent")
+    m = x.get("model_percent")
+    lay = _layers(x)
+    lines.append(
+        f"Aday: {x['name']} {x['odds']} · kalıp %{h if h is not None else '-'} · "
+        f"model %{m if m is not None else '-'} · birleşik %{p if p is not None else '-'} · hiza {lay}/3"
+    )
+    oyna = lay >= MIN_LAYER and (p or 0) >= MIN_BLEND and (n_hist or 0) >= 25
+    if oyna:
+        lines.append(f"KARAR: OYNA · {x['name']} {x['odds']} · tek iş · tek birim")
     else:
-        for x in good[:3]:
-            extra = x["stand_note"] + " · " if x.get("stand_note") else ""
-            lines.append(
-                f"{x['name']} {x['odds']} · {extra}karışık %{x.get('blend_percent')} · EV %{round((x['ev'] or 0)*100,1)}"
-            )
-    if n_hist and n_hist < 30:
-        lines.append(f"Kalıp n={n_hist}; yüzdeye fazla yüklenme.")
-    return lines
+        lines.append("KARAR: GEÇ")
+        if lay < MIN_LAYER:
+            lines.append("Katmanlar aynı işte durmuyor.")
+        elif (p or 0) < MIN_BLEND:
+            lines.append(f"Birleşik %{(p or 0):.0f} < %{MIN_BLEND:.0f}.")
+        elif (n_hist or 0) < 25:
+            lines.append(f"Benzer maç {n_hist or 0}; örnek yetmez.")
+    return lines[:7]

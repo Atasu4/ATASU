@@ -11,3 +11,9 @@
 
 - Maçkolik Puan-Durumu entegrasyonu
 - Tercih yalnızca açık iddaa piyasaları
+
+# ATASU 5.2.2
+
+- POST /api/update: cache sil + biten maç hasadı
+- UI Güncelle + 15 dk otomatik
+- Tara edilen lig season_id state’e yazılır
