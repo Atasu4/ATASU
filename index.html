@@ -9,10 +9,19 @@
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --ink:#07080a; --void:#0c0d10; --paper:#101217;
-  --line:rgba(214,186,132,.16); --line2:rgba(214,186,132,.28);
-  --gold:#e4c98a; --gold2:#b8945a; --fog:#8e918b; --snow:#f6f1e6;
-  --go:#b7e4b0; --stop:#e89aa3;
+  --ink:#07080A;
+  --void:#0C0D10;
+  --paper:#101217;
+  --wash:#0E1014;
+  --gold:#E4C98A;
+  --gold2:#B8945A;
+  --champagne:#F4E6C0;
+  --line:rgba(214,186,132,.16);
+  --line2:rgba(214,186,132,.28);
+  --fog:#8E918B;
+  --snow:#F6F1E6;
+  --go:#B7E4B0;
+  --stop:#E89AA3;
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--ink);color:var(--snow);font-family:Manrope,system-ui,sans-serif}
@@ -20,7 +29,7 @@ body{
   min-height:100vh;
   background:
     radial-gradient(ellipse 70% 36% at 50% -8%, rgba(184,148,90,.16), transparent 52%),
-    linear-gradient(180deg, #0e1014 0%, var(--ink) 28%);
+    linear-gradient(180deg, var(--wash) 0%, var(--ink) 28%);
 }
 .frame{max-width:1080px;margin:0 auto;padding:0 22px 96px}
 .mast{
@@ -90,7 +99,7 @@ tr:hover td{background:rgba(228,201,138,.04)}
   background:linear-gradient(180deg, rgba(184,148,90,.12), rgba(184,148,90,.04));
 }
 .tercih .kicker{margin-bottom:8px}
-.tercih p{margin:0;font:500 15px/1.55 Manrope;color:#f4e6c0;white-space:pre-wrap}
+.tercih p{margin:0;font:500 15px/1.55 Manrope;color:var(--champagne);white-space:pre-wrap}
 .chipwrap{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0 4px}
 .chip{border:1px solid var(--line);padding:8px 11px;font:12px "IBM Plex Mono",monospace;background:var(--void)}
 .chip em{display:block;font-style:normal;color:var(--fog);font-size:9px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:3px}
