@@ -1,2 +1,2 @@
-Bu app.py dosyasini eski app.py uzerine koy, restart et.
-Anahtar dosyanin icinde. Env eklemesen de betfair acilir.
+Sadece app.py yi uzerine koy, restart.
+Yorum artik 6 baslikli duz metin.

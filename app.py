@@ -252,6 +252,167 @@ def poisson_board(lam, home_share=0.55):
     }
 
 
+def dixon_coles(lh, la, rho=-0.13, nmax=8):
+    """Bivariate Poisson + DC low-score correction. rho typical -0.10..-0.15."""
+    if not lh or not la:
+        return None
+    lh = max(0.12, float(lh))
+    la = max(0.12, float(la))
+    rho = float(rho)
+
+    def tau(h, a):
+        if h == 0 and a == 0:
+            return 1 - lh * la * rho
+        if h == 0 and a == 1:
+            return 1 + lh * rho
+        if h == 1 and a == 0:
+            return 1 + la * rho
+        if h == 1 and a == 1:
+            return 1 - rho
+        return 1.0
+
+    cells = []
+    p_h = p_d = p_a = p_o25 = p_u25 = p_btts = p_g6 = p_ht_proxy = 0.0
+    tot = 0.0
+    for h in range(0, nmax + 1):
+        ph = poisson_pmf(h, lh)
+        for a in range(0, nmax + 1):
+            pa = poisson_pmf(a, la)
+            p = max(0.0, ph * pa * tau(h, a))
+            tot += p
+            cells.append((h, a, p))
+    if tot <= 0:
+        return None
+    scores = []
+    for h, a, p in cells:
+        p = p / tot
+        t = h + a
+        if h > a:
+            p_h += p
+        elif h == a:
+            p_d += p
+        else:
+            p_a += p
+        if t >= 3:
+            p_o25 += p
+        else:
+            p_u25 += p
+        if h and a:
+            p_btts += p
+        if t >= 6:
+            p_g6 += p
+        scores.append({"score": f"{h}-{a}", "percent": round(p * 100, 2)})
+    scores.sort(key=lambda x: -x["percent"])
+    # implied no-vig from 1X2 if later mixed; here model probs
+    return {
+        "lambda_home": round(lh, 2),
+        "lambda_away": round(la, 2),
+        "rho": rho,
+        "ms1": round(p_h * 100, 1),
+        "msx": round(p_d * 100, 1),
+        "ms2": round(p_a * 100, 1),
+        "p_o25": round(p_o25 * 100, 1),
+        "p_u25": round(p_u25 * 100, 1),
+        "p_btts": round(p_btts * 100, 1),
+        "p_g6": round(p_g6 * 100, 1),
+        "top": scores[:8],
+        "fair_odds": {
+            "h": round(1 / p_h, 2) if p_h > 0.02 else None,
+            "d": round(1 / p_d, 2) if p_d > 0.02 else None,
+            "a": round(1 / p_a, 2) if p_a > 0.02 else None,
+            "o25": round(1 / p_o25, 2) if p_o25 > 0.02 else None,
+            "u25": round(1 / p_u25, 2) if p_u25 > 0.02 else None,
+            "btts": round(1 / p_btts, 2) if p_btts > 0.02 else None,
+        },
+        "note": "Dixon-Coles. rho=-0.13 düşük skor bağımlılığı. 1M MC değil, tam ızgara.",
+    }
+
+
+def no_vig_group(odds_map):
+    """Normalize a mutually exclusive group to 100%."""
+    items = []
+    s = 0.0
+    for k, o in odds_map.items():
+        p = implied(o)
+        if not p:
+            continue
+        items.append((k, o, p))
+        s += p
+    if s <= 0:
+        return []
+    out = []
+    for k, o, p in items:
+        nv = p / s
+        out.append({
+            "key": k,
+            "name": NAMES.get(k, k),
+            "odds": o,
+            "raw_percent": round(p * 100, 1),
+            "no_vig_percent": round(nv * 100, 1),
+            "fair_odds": round(1 / nv, 2) if nv > 0 else None,
+            "margin_share": round((p - nv) * 100, 2),
+        })
+    return out
+
+
+def lh_style_engine(q, stats_obj=None):
+    """LH Bet çekirdeğinin ATASU uyarlaması: λ + Dixon-Coles + no-vig EV."""
+    stats_obj = stats_obj or {}
+    lam = expected_goals(q)
+    if not lam and stats_obj.get("avg_goals"):
+        lam = stats_obj["avg_goals"]
+    if not lam:
+        return {"ok": False, "reason": "λ yok"}
+    if stats_obj.get("avg_goals") and stats_obj.get("avg_home_goals"):
+        share = stats_obj["avg_home_goals"] / max(stats_obj["avg_goals"], 0.1)
+    elif q.get("h") and q.get("a"):
+        ph, pa = implied(q["h"]) or 0.4, implied(q["a"]) or 0.3
+        share = 0.5 + 0.25 * ((ph - pa) / max(ph + pa, 0.05))
+    else:
+        share = 0.55
+    share = min(0.78, max(0.22, share))
+    lh = max(0.15, lam * share)
+    la = max(0.15, lam - lh)
+    dc = dixon_coles(lh, la)
+    groups = []
+    for keys in (["h", "d", "a"], ["u25", "o25"], ["btts", "nobtts"], ["u35", "o35"]):
+        sub = {k: q[k] for k in keys if q.get(k)}
+        if len(sub) >= 2:
+            groups.append(no_vig_group(sub))
+    edges = []
+    model_p = {
+        "h": dc["ms1"] if dc else None,
+        "d": dc["msx"] if dc else None,
+        "a": dc["ms2"] if dc else None,
+        "o25": dc["p_o25"] if dc else None,
+        "u25": dc["p_u25"] if dc else None,
+        "btts": dc["p_btts"] if dc else None,
+    }
+    for k, mp in model_p.items():
+        if mp is None or not q.get(k):
+            continue
+        p = mp / 100.0
+        ev = round(p * q[k] - 1, 3)
+        edges.append({
+            "key": k,
+            "name": NAMES.get(k, k),
+            "model_percent": mp,
+            "odds": q[k],
+            "ev_percent": round(ev * 100, 1),
+            "kelly_half": kelly_fraction(p, q[k]) and round(kelly_fraction(p, q[k]) / 2, 4),
+            "signal": "AL" if ev >= 0.08 else ("PAHALI" if ev <= -0.08 else "nötr"),
+        })
+    edges.sort(key=lambda x: x["ev_percent"], reverse=True)
+    return {
+        "ok": True,
+        "lambda_total": lam,
+        "dixon_coles": dc,
+        "no_vig": groups,
+        "edges": edges,
+        "top_model": (dc["top"][0] if dc and dc.get("top") else None),
+    }
+
+
 def late_goal_profile(rows):
     n = sh1 = sh2 = both = 0
     for r in rows:
@@ -1185,7 +1346,8 @@ def odds_scan(req: OddsReq):
     bw = betwatch_find(req.title or "", q=q)
     bw["signals"] = money_signals(s, bw.get("overlay"), q)
     p6 = plus6_payload(q)
-    yorum = compact_yorum(s, matches, title=req.title or "", league=req.league or "", q=q, bw=bw, p6=p6)
+    lh = lh_style_engine(q, s)
+    yorum = compact_yorum(s, matches, title=req.title or "", league=req.league or "", q=q, bw=bw, p6=p6, lh=lh)
     return {
         "method": f"{len(q)} gerçek oran tarandı. En az {minimum}/{len(q)} oran ±{req.tolerance} içinde eşleşti.",
         "sample_audit": sample_audit,
@@ -1217,6 +1379,7 @@ def odds_scan(req: OddsReq):
         "late_goal": late_goal_profile(matches),
         "signals": signal_engine(s, prob, s.get("sample_ft") or 0, q),
         "betwatch": bw,
+        "lh_model": lh,
         "yorum": yorum,
         "matches": matches[: req.limit],
     }
@@ -1389,138 +1552,196 @@ def _team_form(name, n=5):
     }
 
 
-def compact_yorum(s, matches, title="", league="", q=None, bw=None, p6=None):
+def _pct(v):
+    return None if not isinstance(v, (int, float)) else v
+
+
+def compact_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, lh=None):
     q = q or {}
     n = s.get("sample_ft") or 0
     ev, dep = _parse_teams(title)
     ligler = Counter(str(r.get("league") or "?") for r in matches)
-    lig_txt = " ".join(f"{k}×{v}" for k, v in ligler.most_common(4))
-    lines = []
-    head = (title.split("|")[0].strip() if title else "özet")
+    lig_txt = ", ".join(f"{k} ({v})" for k, v in ligler.most_common(4))
+    head = (title.split("|")[0].strip() if title else "Maç özeti")
+    lines = [head]
     if league:
-        head += " · " + league
-    lines.append(head[:90])
+        lines.append("Lig filtresi: " + league)
+
     if not n:
-        lines.append("havuz boş · birebir/benzer sonuç yok")
+        lines.append("Benzer oranlı sonuçlu maç bulunamadı. Sadece piyasa ve model konuşur.")
+        if lh and lh.get("ok") and lh.get("dixon_coles"):
+            dc = lh["dixon_coles"]
+            lines.append(
+                f"Dixon-Coles modele göre ev {dc.get('ms1')}%, beraberlik {dc.get('msx')}%, deplasman {dc.get('ms2')}%. "
+                f"2.5 üst {dc.get('p_o25')}%, KG {dc.get('p_btts')}%."
+            )
         if bw and not bw.get("matched"):
-            lines.append("betfair eşleşme yok")
+            lines.append("Betfair Exchange bu isimle maç açmamış veya eşleşmedi.")
+        lines.append("Karar: örnek yok, kuponu küçült veya geç.")
         return "\n".join(lines)
-    lines.append(f"n={n}" + (f" · {lig_txt}" if lig_txt else "") + " · farklı lig=kalıp")
 
-    def g(name):
-        v = s.get(name)
-        return None if not isinstance(v, (int, float)) else v
-
-    ms = f"ms 1 %{g('MS 1') or 0:.0f} · X %{g('MS X') or 0:.0f} · 2 %{g('MS 2') or 0:.0f}"
-    iy = f"iy 1 %{g('İY 1') or 0:.0f} · X %{g('İY X') or 0:.0f} · 2 %{g('İY 2') or 0:.0f}"
-    lines.append(ms + " · " + iy)
+    p1, px, p2 = _pct(s.get("MS 1")) or 0, _pct(s.get("MS X")) or 0, _pct(s.get("MS 2")) or 0
+    o25, u25 = _pct(s.get("2,5 Üst")) or 0, _pct(s.get("2,5 Alt")) or 0
+    o35 = _pct(s.get("3,5 Üst")) or 0
+    kg = _pct(s.get("KG Var")) or 0
+    iy1 = _pct(s.get("İY 1"))
+    sh1 = _pct(s.get("2.Y 1+ Gol"))
     tops = s.get("top_scores") or []
-    if tops:
-        lines.append("ms sık " + " ".join(f"{t['score']} %{t['percent']:.0f}" for t in tops[:3]))
+    lider, lp = max([("ev", p1), ("beraberlik", px), ("deplasman", p2)], key=lambda x: x[1])
+
+    lines.append("")
+    lines.append("1) Geçmiş benzer maçlar (Excel eşleşme)")
     lines.append(
-        f"2.5ü %{g('2,5 Üst') or 0:.0f} · 3.5ü %{g('3,5 Üst') or 0:.0f} · kg %{g('KG Var') or 0:.0f} · "
-        f"iy gol — · 2.y %{g('2.Y 1+ Gol') or 0:.0f}"
+        f"Aynı oran bandında {n} sonuçlu maç var"
+        + (f"; lig dağılımı: {lig_txt}." if lig_txt else ".")
+        + (" Örnek 30'un altında, yüzdeler kırılgan." if n < 30 else " Örnek yeterli.")
     )
-    if s.get("avg_goals") is not None:
-        lines.append(f"ort gol {s['avg_goals']} ev {s.get('avg_home_goals')} / dep {s.get('avg_away_goals')}")
+    lines.append(
+        f"Maç sonu: ev %{p1:.0f}, beraberlik %{px:.0f}, deplasman %{p2:.0f}. "
+        f"İlk yarı ev %{iy1:.0f}." if iy1 is not None else
+        f"Maç sonu: ev %{p1:.0f}, beraberlik %{px:.0f}, deplasman %{p2:.0f}."
+    )
+    if tops:
+        lines.append("Sık bitişler: " + ", ".join(f"{t['score']} (%{t['percent']:.0f})" for t in tops[:4]) + ".")
+    gol_txt = f"Ortalama {s.get('avg_goals')} gol (ev {s.get('avg_home_goals')} / dep {s.get('avg_away_goals')}). " if s.get("avg_goals") is not None else ""
+    lines.append(
+        gol_txt + f"2.5 üst %{o25:.0f}, 3.5 üst %{o35:.0f}, KG %{kg:.0f}"
+        + (f", ikinci yarıda gol %{sh1:.0f}." if sh1 is not None else ".")
+    )
     fe = _team_form(ev) if ev else None
     fd = _team_form(dep) if dep else None
     if fe or fd:
-        bit = []
+        form_l = []
         if fe:
-            bit.append(f"ev {fe['ad']} {fe['WDL']} {fe['ort']} {fe['form']}")
+            form_l.append(f"{fe['ad']} son {fe['n']} maç {fe['WDL']} (gol {fe['ort']}, form {fe['form']})")
         if fd:
-            bit.append(f"dep {fd['ad']} {fd['WDL']} {fd['ort']} {fd['form']}")
-        lines.append(" · ".join(bit))
-    o25 = g("2,5 Üst") or 0
-    u25 = g("2,5 Alt") or 0
-    p1 = g("MS 1") or 0
-    px = g("MS X") or 0
-    p2 = g("MS 2") or 0
-    kg = g("KG Var") or 0
-    okuma = []
-    if o25 >= 65:
-        okuma.append("havuz golcü")
-    elif o25 <= 40:
-        okuma.append("havuz düşük skor")
-    else:
-        okuma.append("orta gol")
-    lider, lp = max([("1", p1), ("X", px), ("2", p2)], key=lambda x: x[1])
-    if lp >= 45:
-        okuma.append("analog " + ("ev" if lider == "1" else "dep" if lider == "2" else "X"))
-    else:
-        okuma.append("ms dağınık")
-    if kg >= 60:
-        okuma.append("kg sık")
-    elif kg and kg <= 35:
-        okuma.append("tek kapı var")
-    if p6 and isinstance(p6.get("compatibility_percent"), (int, float)):
-        okuma.append(f"+6 %{p6['compatibility_percent']}")
-    lines.append("okuma: " + " · ".join(okuma))
+            form_l.append(f"{fd['ad']} son {fd['n']} maç {fd['WDL']} (gol {fd['ort']}, form {fd['form']})")
+        lines.append("Kendi havuz form: " + " | ".join(form_l) + ".")
 
-    sigs = (bw or {}).get("signals") or money_signals(s, (bw or {}).get("overlay"), q)
+    lines.append("")
+    lines.append("2) Piyasa oranları")
+    book_bits = []
+    for k, name in [("h", "MS 1"), ("d", "MS X"), ("a", "MS 2"), ("o25", "2.5 üst"), ("u25", "2.5 alt"), ("btts", "KG var"), ("nobtts", "KG yok"), ("o35", "3.5 üst")]:
+        if q.get(k):
+            ip = implied(q[k])
+            book_bits.append(f"{name} {q[k]}" + (f" (ima %{ip*100:.0f})" if ip else ""))
+    if book_bits:
+        lines.append("İddaa/girilen oran: " + "; ".join(book_bits) + ".")
+    else:
+        lines.append("Bu tarama için oran kutusu boş.")
+
+    lines.append("")
+    lines.append("3) Betfair para (Betwatch)")
     matched_bw = (bw or {}).get("matched")
     if not BETWATCH_TOKEN:
-        lines.append("betfair: anahtar yok")
+        lines.append("Betfair bağlı değil (anahtar yok). Para teyidi bu maçta yok.")
     elif not matched_bw:
-        lines.append("betfair: bu maç exchange'de yok veya isim eşleşmedi")
+        lines.append("Bu maç Betfair Exchange'de yok veya isim eşleşmedi. Küçük / gençlik liglerinde normal.")
     else:
-        mh, ma = matched_bw.get("home"), matched_bw.get("away")
-        lines.append(f"betfair: {mh} - {ma} · {matched_bw.get('source') or 'prematch'}")
-        money_bits = []
-        for key, label in [("h", "1"), ("d", "X"), ("a", "2"), ("o25", "2.5ü"), ("u25", "2.5a"), ("btts", "kg"), ("nobtts", "kgy")]:
+        lines.append(f"Eşleşen market: {matched_bw.get('home')} - {matched_bw.get('away')} ({matched_bw.get('source')}).")
+        money_lines = []
+        for key, label in [("h", "MS 1"), ("d", "MS X"), ("a", "MS 2"), ("o25", "2.5 üst"), ("u25", "2.5 alt"), ("btts", "KG var")]:
             mk = (matched_bw.get("markets") or {}).get(key) or {}
-            if mk.get("money_pct") is None and mk.get("odd") is None:
+            if mk.get("odd") is None and mk.get("money_pct") is None:
                 continue
-            bit = label
+            piece = label
             if mk.get("odd"):
-                bit += f" {mk['odd']}"
+                piece += f" oran {mk['odd']}"
             if mk.get("money_pct") is not None:
-                bit += f" %{mk['money_pct']:.0f}"
+                piece += f", paranın %{mk['money_pct']:.0f}'i"
             if mk.get("volume"):
-                bit += f" €{int(mk['volume'])}"
-            money_bits.append(bit)
-        if money_bits:
-            lines.append("para " + " · ".join(money_bits[:7]))
-        al = [x["name"] for x in sigs if x.get("signal") == "AL"]
-        pahali = [x["name"] for x in sigs if x.get("signal") in ("PAHALI", "EV-")]
-        ters = [x["name"] for x in sigs if x.get("signal") == "TERS/MONEY YOK"]
-        evp = [x["name"] for x in sigs if x.get("signal") == "EV+"]
-        karar = []
-        if al:
-            karar.append("AL " + ", ".join(al[:3]))
-        elif evp:
-            karar.append("kalıp+ " + ", ".join(evp[:3]))
-        if pahali:
-            karar.append("pahalı " + ", ".join(pahali[:3]))
-        if ters:
-            karar.append("para ters " + ", ".join(ters[:2]))
-        if not karar:
-            # fuse hist vs money even without volume threshold
-            top_money = None
-            best_pct = -1
-            for key, label in [("h", "MS 1"), ("d", "MS X"), ("a", "MS 2"), ("o25", "2,5 Üst"), ("u25", "2,5 Alt"), ("btts", "KG Var")]:
-                mk = (matched_bw.get("markets") or {}).get(key) or {}
-                pct = mk.get("money_pct") or 0
-                if pct > best_pct:
-                    best_pct = pct
-                    top_money = label
-            hist_side = {"1": "MS 1", "X": "MS X", "2": "MS 2"}.get(lider)
-            if o25 >= 60 and top_money in ("2,5 Üst", "KG Var"):
-                karar.append("kalıp ve para gol tarafında · oran kısaysa chase etme")
-            elif o25 <= 45 and top_money == "2,5 Alt":
-                karar.append("kalıp ve para alt tarafta")
-            elif hist_side and top_money == hist_side:
-                karar.append(f"kalıp+para {hist_side}")
-            elif hist_side and top_money and top_money != hist_side:
-                karar.append(f"kalıp {hist_side} · para {top_money} · çelişki")
-            else:
-                karar.append("betfair teyit zayıf")
-        lines.append("birleşik: " + " · ".join(karar))
+                piece += f" (€{int(mk['volume'])})"
+            money_lines.append(piece)
+        if money_lines:
+            lines.append("Para dağılımı: " + "; ".join(money_lines) + ".")
+        else:
+            lines.append("Market açık ama volume henüz düşük.")
 
-    lines.append("birebir 0 olabilir · tablo kanıt değil kalıp+para")
+    lines.append("")
+    lines.append("4) Dixon-Coles model (LH çekirdeği)")
+    if lh and lh.get("ok") and lh.get("dixon_coles"):
+        dc = lh["dixon_coles"]
+        top = (dc.get("top") or [{}])[0]
+        lines.append(
+            f"λ ev {dc.get('lambda_home')} / λ dep {dc.get('lambda_away')}. "
+            f"Model MS: ev %{dc.get('ms1')}, X %{dc.get('msx')}, dep %{dc.get('ms2')}. "
+            f"2.5 üst %{dc.get('p_o25')}, KG %{dc.get('p_btts')}. "
+            f"En olası skor {top.get('score')} (%{top.get('percent')})."
+        )
+        strong = [x for x in (lh.get("edges") or []) if x.get("signal") in ("AL", "PAHALI")]
+        if strong:
+            lines.append("Modele göre değer: " + "; ".join(
+                f"{x['name']} EV %{x['ev_percent']} ({x['signal']})" for x in strong[:4]
+            ) + ".")
+    else:
+        lines.append("Model λ üretemedi (2.5/3.5 oranı veya ortalama gol yok).")
+
+    if p6:
+        lines.append("")
+        lines.append("5) +6 bandı")
+        lines.append(
+            f"+6 uyumu %{p6.get('compatibility_percent')} ({p6.get('matched_rules')}/{p6.get('total_rules')} kural). "
+            + ("Gol-patlaması bandına yakın." if (p6.get("compatibility_percent") or 0) >= 60 else "Klasik +6 senaryosu değil.")
+        )
+
+    lines.append("")
+    lines.append("6) Birleşik karar")
+    # synthesize
+    book_fav = "ev" if (implied(q.get("h")) or 0) >= max(implied(q.get("d")) or 0, implied(q.get("a")) or 0) else (
+        "deplasman" if (implied(q.get("a")) or 0) > (implied(q.get("d")) or 0) else "beraberlik"
+    ) if q.get("h") or q.get("a") else lider
+    o25_book = implied(q.get("o25"))
+    pahali_ust = bool(o25_book and o25_book * 100 - o25 >= 8)
+    ucuz_ust = bool(o25_book and o25 - o25_book * 100 >= 8)
+    model_fav = None
+    if lh and lh.get("dixon_coles"):
+        model_fav = max(
+            [("ev", lh["dixon_coles"].get("ms1") or 0), ("beraberlik", lh["dixon_coles"].get("msx") or 0), ("deplasman", lh["dixon_coles"].get("ms2") or 0)],
+            key=lambda x: x[1],
+        )[0]
+    para_fav = None
+    if matched_bw:
+        best = (-1, None)
+        for key, lab in [("h", "ev"), ("d", "beraberlik"), ("a", "deplasman")]:
+            pct = ((matched_bw.get("markets") or {}).get(key) or {}).get("money_pct") or -1
+            if pct > best[0]:
+                best = (pct, lab)
+        para_fav = best[1]
+
+    ayni = [lider]
+    if model_fav:
+        ayni.append(model_fav)
+    if para_fav:
+        ayni.append(para_fav)
+    taraf_oy = Counter(ayni).most_common(1)[0]
+    lines.append(
+        f"Kalıp tarafı: {lider} (%{lp:.0f}). "
+        + (f"Model tarafı: {model_fav}. " if model_fav else "")
+        + (f"Betfair para tarafı: {para_fav}. " if para_fav else "Betfair teyidi yok. ")
+        + f"Piyasa favorisi: {book_fav}."
+    )
+    if pahali_ust:
+        lines.append(f"2.5 üst geçmişte %{o25:.0f} gelmiş, piyasa yaklaşık %{o25_book*100:.0f} istiyor. Üst pahalı; gol beklentisini kovalama.")
+    elif ucuz_ust:
+        lines.append(f"2.5 üst geçmişte %{o25:.0f}, piyasa %{o25_book*100:.0f}. Üstte hafif değer olabilir.")
+    if kg >= 60 and q.get("btts") and implied(q["btts"]) and implied(q["btts"]) * 100 - kg >= 8:
+        lines.append("KG kalıpta sık, oran bunu fazla kesmiş. KG var tek başına zayıf kupon.")
+    if n < 30:
+        lines.append("Havuz küçük. Tek seçeneğe yüklenme.")
+    if taraf_oy[1] >= 2 and taraf_oy[0] != "beraberlik":
+        lines.append(f"Sonuç: {taraf_oy[0]} kazanır tarafı kaynaklarda uyumlu. Skor olarak düşük/orta gol daha tutarlı" + (" çünkü üst oran ölmüş." if pahali_ust else "."))
+        if lider == "ev" and (s.get("avg_away_goals") or 1) < 1.1:
+            lines.append("Tercih aralığı: ev kazanır veya ev + 2.5 alt. Tam skor 1-0 / 2-0 / 2-1.")
+        elif lider == "deplasman":
+            lines.append("Tercih aralığı: deplasman veya deplasman çifte şans. Kör 2.5 üst değil.")
+        else:
+            lines.append("Net favori yok; geç veya çok küçük bahis.")
+    elif taraf_oy[0] == "beraberlik" and px >= 30:
+        lines.append("Beraberlik kalıpta görünüyor ama tek X genelde pahalı. İY X / MS 1 veya çift şans daha mantıklı.")
+    else:
+        lines.append("Kaynaklar aynı kapıya bakmıyor. Bu maçte banko yok; ya geç ya da en ucuz kalan tek seçenek.")
+    lines.append("Bu metin kanıt değil. Kalıp + model + para sentezi; n küçükse veya Betfair yoksa güven düşer.")
     return "\n".join(lines)
-
 
 def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
     match_title = title or ""
@@ -1560,7 +1781,8 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
     lines.append(f"+6 bant uyumu %{p6['compatibility_percent']} ({p6['matched_rules']}/{p6['total_rules']}).")
     bw = betwatch_find(match_title, q=q)
     bw["signals"] = money_signals(s, bw.get("overlay"), q)
-    yorum = compact_yorum(s, matches, title=match_title or title, league=league, q=q, bw=bw, p6=p6)
+    lh = lh_style_engine(q, s)
+    yorum = compact_yorum(s, matches, title=match_title or title, league=league, q=q, bw=bw, p6=p6, lh=lh)
     return {
         "title": title,
         "text": " ".join(lines),
@@ -1573,6 +1795,7 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
         "matches": matches[:limit],
         "yorum": yorum,
         "betwatch": bw,
+        "lh_model": lh,
     }
 
 
