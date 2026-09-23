@@ -538,7 +538,7 @@ EMPIRICAL_RULES = [
 LH_URL = "https://eagle-sapphire-quiet-bold.grok.me/"
 
 BETWATCH_API = os.environ.get("BETWATCH_API", "https://api.betwatch.fr/api/v1")
-BETWATCH_TOKEN = os.environ.get("BETWATCH_API_KEY", "").strip()
+BETWATCH_TOKEN = os.environ.get("BETWATCH_API_KEY", "").strip() or "3998ca22082238518d38af6f4aff0eca45e75e9b"
 _BW_CACHE = {"prematch": None, "live": None, "ts": 0.0}
 _BW_TTL = 40
 
