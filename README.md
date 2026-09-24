@@ -1,4 +1,4 @@
-# ATASU Intelligence 5.5.0
+# ATASU Intelligence 5.6.0
 
 Geçmiş iddaa oranlarıyla benzer maç tarama, Dixon-Coles, Wilson/Kelly, Maçkolik bülten ve puan durumu.
 
@@ -18,5 +18,6 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 3. Tercih yalnızca bültende açık iddaa seçeneklerinden üretilir
 4. OYNA için: hiza, birleşik ≥%63, n≥25, Wilson alt ≥%52, oran 1.30–2.20
 5. Stake: yarım Kelly
+6. **Oran** sekmesi: bülteni toplu tara — benzer oran hit + EV + yarım Kelly
 
 Yarım Kelly kullan. Eşleşen maç < 30 ise yüzdelere güvenme.

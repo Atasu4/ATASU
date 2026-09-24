@@ -89,7 +89,7 @@ def _standing(home, away="", league=""):
     return pack
 
 
-app = FastAPI(title="ATASU Intelligence", version="5.5.0")
+app = FastAPI(title="ATASU Intelligence", version="5.6.0")
 WEIGHTS = {
     "h": 1.2, "d": 1.0, "a": 1.2,
     "u25": 1.1, "o25": 1.1,
@@ -1179,7 +1179,7 @@ def meta():
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "markets": MARKETS,
-        "version": "5.5.0",
+        "version": "5.6.0",
         "warning": HISTORY_WARNING,
         "rule": "Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır. Puan durumu Maçkolik arşivinden çekilir.",
         "ledger": (ROOT / "data" / "ledger.json").exists(),
@@ -2538,3 +2538,129 @@ def api_ledger_get():
     miss = sum(1 for r in rows if r.get("settled") == "MISS")
     n = hits + miss
     return {"ok": True, "rows": rows[-80:], "hit_pct": round(100 * hits / n, 1) if n else None, "settled": n}
+
+
+class OranScanReq(_BM):
+    matches: list[dict] = []
+    tolerance: float = 0.08
+    bankroll: float = 1000.0
+    limit: int = 40
+
+
+def _odds_from_row(m: dict) -> dict:
+    q = {}
+    for k in MARKETS:
+        v = _odd(m.get(k))
+        if v:
+            q[k] = v
+    extra = m.get("odds") if isinstance(m.get("odds"), dict) else {}
+    for k, v in extra.items():
+        vv = _odd(v)
+        if vv and (k in MARKETS or k in ("iy05", "nofirst", "o45")):
+            q[k] = vv
+    return q
+
+
+def _open_from_row(m: dict, key: str):
+    op = m.get("open") if isinstance(m.get("open"), dict) else {}
+    return _odd(op.get(key)) or _odd(m.get("open_" + key))
+
+
+def scan_one_oran(m: dict, tol: float, bankroll: float) -> dict:
+    q = _odds_from_row(m)
+    title = m.get("title") or f"{m.get('home') or ''} - {m.get('away') or ''}".strip(" -")
+    league = m.get("league") or ""
+    if len(q) < 2:
+        return {
+            "ok": False,
+            "title": title,
+            "home": m.get("home"),
+            "away": m.get("away"),
+            "kickoff": m.get("time"),
+            "league": league,
+            "note": "en az 2 oran yok",
+            "markets": [],
+        }
+    _pool, matches, _minimum, fallback = match_rows(q, tol, league)
+    s = stats(matches)
+    n = s.get("sample_ft") or 0
+    try:
+        lh = lh_style_engine(q, s, None)
+    except Exception:
+        lh = {}
+    ranked = score_open_picks(q, s, lh, None)
+    banko = banko_evaluate(ranked[0], n, standing=None, lh=lh, stats_obj=s) if ranked else None
+    rows = []
+    for p in ranked:
+        odd = p.get("odds")
+        blend = p.get("blend_percent")
+        p01 = (blend / 100.0) if isinstance(blend, (int, float)) else None
+        kf = kelly_fraction(p01, odd) if p01 is not None else None
+        half = round(kf / 2, 4) if kf else 0.0
+        open_o = _open_from_row(m, p.get("key"))
+        close_o = odd
+        drift = None
+        if open_o and close_o:
+            drift = round(close_o - open_o, 3)
+        rows.append({
+            "key": p.get("key"),
+            "name": p.get("name"),
+            "open": open_o,
+            "close": close_o,
+            "drift": drift,
+            "hist": p.get("hist_percent"),
+            "model": p.get("model_percent"),
+            "blend": blend,
+            "n": n,
+            "wilson_lo": p.get("wilson_lo"),
+            "ev": p.get("ev"),
+            "kelly_half": half,
+            "stake": round(half * bankroll, 2) if half else 0.0,
+        })
+    return {
+        "ok": True,
+        "title": title,
+        "home": m.get("home"),
+        "away": m.get("away"),
+        "kickoff": m.get("time") or m.get("kickoff"),
+        "league": league,
+        "mac_id": m.get("mac_id"),
+        "sample": n,
+        "fallback": fallback,
+        "banko": banko,
+        "best": rows[0] if rows else None,
+        "markets": rows,
+    }
+
+
+@app.post("/api/oran-scan")
+def api_oran_scan(req: OranScanReq):
+    rows = req.matches[: max(1, min(int(req.limit or 40), 80))]
+    out = [scan_one_oran(m, req.tolerance, req.bankroll) for m in rows]
+    out.sort(key=lambda x: ((x.get("best") or {}).get("ev") or -9), reverse=True)
+    return {
+        "ok": True,
+        "version": "5.6.0",
+        "history_n": len(HISTORY),
+        "n": len(out),
+        "bankroll": req.bankroll,
+        "tolerance": req.tolerance,
+        "matches": out,
+    }
+
+
+@app.get("/api/oran-scan")
+def api_oran_scan_bulletin(tolerance: float = 0.08, bankroll: float = 1000, limit: int = 24):
+    """Bülteni çek, açık MS/2.5 olan maçları tara. Standing yok — hızlı tarama."""
+    try:
+        pack = bulletin("")
+    except Exception as e:
+        raise HTTPException(502, "Bülten: " + str(e)[:120])
+    rows = []
+    for m in pack.get("matches") or []:
+        if _odd(m.get("h")) and _odd(m.get("d")) and _odd(m.get("a")):
+            rows.append(m)
+        if len(rows) >= limit:
+            break
+    return api_oran_scan(OranScanReq(matches=rows, tolerance=tolerance, bankroll=bankroll, limit=limit))
+

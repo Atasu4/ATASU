@@ -1,3 +1,9 @@
+# ATASU 5.6.0
+
+- Oran sekmesi: bülten taraması + benzer oran hit + EV + yarım Kelly
+- POST/GET `/api/oran-scan` (standing yok, hızlı; banko kapıları kalıp/model/EV)
+- Açılış varsa drift; bültende yoksa yalnız kapanış
+
 # ATASU 5.5.1
 
 - Opta npxG resmi alan veya SoT/sut proxy
