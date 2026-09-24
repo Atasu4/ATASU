@@ -199,21 +199,26 @@ def fetch_standing(season_id: int) -> dict | None:
         # [id, date, status, homeId, awayId, code, hg, ag, "x - y", ?, h,d,a, ...]
         if not isinstance(r, list) or len(r) < 9:
             continue
+        def at(i):
+            return r[i] if len(r) > i else None
         results.append({
             "date": r[1],
             "status": r[2],
             "home_id": r[3],
             "away_id": r[4],
-            "hh": r[6] if len(r) > 6 else None,
-            "ha": r[7] if len(r) > 7 else None,
-            "hg": r[6] if False else None,
+            "hh": None,
+            "ha": None,
+            "hg": None,
             "ft_raw": r[8],
             "ft": str(r[8]).replace(" ", ""),
-            "h": r[10] if len(r) > 10 else None,
-            "d": r[11] if len(r) > 11 else None,
-            "a": r[12] if len(r) > 12 else None,
-            "o25": r[16] if len(r) > 16 else None,
-            "u25": r[17] if len(r) > 17 else None,
+            "h": at(10),
+            "d": at(11),
+            "a": at(12),
+            "o25": at(16),
+            "u25": at(17),
+            "iyh": at(22),
+            "iyd": at(23),
+            "iya": at(24),
             "raw": r,
         })
     fixture = []
@@ -224,7 +229,7 @@ def fetch_standing(season_id: int) -> dict | None:
     out = {
         "season_id": data.get("id") or season_id,
         "table": rows,
-        "results": results[:30],
+        "results": results,
         "fixture": fixture[:20],
         "names": {r["team_id"]: r["name"] for r in rows},
     }
@@ -915,7 +920,7 @@ def score_open_picks(q: dict, stats_obj: dict | None, lh: dict | None, pack: dic
 
         p_use = None
         if isinstance(hist, (int, float)) and isinstance(model_p, (int, float)):
-            p_use = 0.50 * float(hist) + 0.30 * float(model_p)
+            p_use = 0.32 * float(hist) + 0.48 * float(model_p)
             if key in ("o25", "u25") and combo_o25 is not None:
                 p_use += 0.20 * (combo_o25 if key == "o25" else 100 - combo_o25)
             elif key in ("btts", "nobtts") and combo_kg is not None:
@@ -966,12 +971,30 @@ def _ima(odd):
         return None
 
 
-# İsabet modu: kısa-orta bant (history hit ~%60–66). Yield hâlâ eksi olabilir.
 MIN_ODD = 1.30
-MAX_ODD = 1.60
-MIN_BLEND = 60.0
+MAX_ODD = 2.20
+MIN_BLEND = 63.0
 MIN_LAYER = 2
-HIT_KEYS = ("h", "o25", "btts")  # history'de bu bantta en yüksek isabet
+MIN_WILSON_LO = 52.0
+HIT_KEYS = ("h", "o25", "btts")
+
+
+def wilson_interval(percent, n, z=1.96):
+    """Wilson skoru % alt-ust bant. Kucuk n'de ham yuzdeden daha durust."""
+    try:
+        n = int(n or 0)
+        p = float(percent) / 100.0
+    except Exception:
+        return None
+    if n <= 0 or percent is None:
+        return None
+    p = min(0.999, max(0.001, p))
+    den = 1 + z * z / n
+    center = (p + z * z / (2 * n)) / den
+    margin = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / den
+    lo = max(0.0, center - margin)
+    hi = min(1.0, center + margin)
+    return {"lo": round(lo * 100, 1), "hi": round(hi * 100, 1), "mid": round(center * 100, 1)}
 
 
 def _layers(x) -> int:
@@ -980,21 +1003,24 @@ def _layers(x) -> int:
         n += 1
     if isinstance(x.get("model_percent"), (int, float)) and x["model_percent"] >= 58:
         n += 1
-    if isinstance(x.get("blend_percent"), (int, float)) and x["blend_percent"] >= 60:
+    if isinstance(x.get("blend_percent"), (int, float)) and x["blend_percent"] >= 62:
         n += 1
     if x.get("key") in HIT_KEYS:
         n += 1
     try:
         o = float(x.get("odds") or 99)
-        if 1.30 <= o <= 1.50:
+        if 1.30 <= o <= 1.70:
             n += 1
     except Exception:
         pass
+    w = x.get("wilson_lo")
+    if isinstance(w, (int, float)) and w >= MIN_WILSON_LO:
+        n += 1
     return n
 
 
 def tercih_from_open(ranked: list[dict], n_hist: int) -> list[str]:
-    """İsabet modu: 1.30–1.60, MS1 / 2.5Ü / KG öncelik. 1.10 yok. 1.80+ yok."""
+    """Minimum kayip: 1.30-2.20 acik iddaa. Wilson alt bant + hiza. 1.10 yok."""
     if not ranked:
         return ["Bültende açık iddaa oranı yok.", "KARAR: GEÇ"]
     band, disi = [], []
@@ -1003,39 +1029,51 @@ def tercih_from_open(ranked: list[dict], n_hist: int) -> list[str]:
             o = float(x.get("odds") or 0)
         except Exception:
             continue
+        hist = x.get("hist_percent")
+        w = wilson_interval(hist, n_hist) if hist is not None else None
+        if w:
+            x["wilson_lo"] = w["lo"]
+            x["wilson_hi"] = w["hi"]
         (band if MIN_ODD <= o <= MAX_ODD else disi).append(x)
-    band.sort(key=lambda x: (-_layers(x), float(x.get("odds") or 9), -(x.get("blend_percent") or 0)))
-    lines = [
-        f"İsabet modu {MIN_ODD}–{MAX_ODD}. Hedef hit ~%60+. 1.10 ve 1.80+ yok."
-    ]
+    band.sort(key=lambda x: (-_layers(x), -(x.get("ev") or -9), -(x.get("blend_percent") or 0)))
+    lines = [f"Kupon bandı {MIN_ODD}-{MAX_ODD}. Wilson alt ≥%{MIN_WILSON_LO:.0f}. 1.10 yok."]
     kisa = [f"{x['name']} {x['odds']}" for x in disi if float(x.get("odds") or 0) < MIN_ODD]
-    uzun = [f"{x['name']} {x['odds']}" for x in disi if float(x.get("odds") or 0) > MAX_ODD]
     if kisa:
-        lines.append("Çok kısa (yok): " + ", ".join(kisa[:3]) + ".")
-    if uzun:
-        lines.append("Uzun oran isabet düşürür (yok): " + ", ".join(uzun[:3]) + ".")
+        lines.append("Band dışı kısa (yok): " + ", ".join(kisa[:4]) + ".")
     if not band:
-        lines.append("1.30–1.60 açık iş yok.")
+        lines.append("Açık iddaada bu bantta iş yok.")
         lines.append("KARAR: GEÇ")
         return lines[:7]
-    # MS1 / 2.5Ü / KG varsa onları öne al
     pref = [x for x in band if x.get("key") in HIT_KEYS]
     x = (pref or band)[0]
     p, h, m = x.get("blend_percent"), x.get("hist_percent"), x.get("model_percent")
     lay = _layers(x)
+    wlo = x.get("wilson_lo")
     lines.append(
         f"Aday: {x['name']} {x['odds']} · kalıp %{h if h is not None else '-'} · "
-        f"model %{m if m is not None else '-'} · birleşik %{p if p is not None else '-'} · hiza {lay}/5"
+        f"model %{m if m is not None else '-'} · birleşik %{p if p is not None else '-'} · "
+        f"Wilson %{wlo if wlo is not None else '-'} · hiza {lay}/6"
     )
-    oyna = lay >= MIN_LAYER and (p or 0) >= MIN_BLEND and (n_hist or 0) >= 20
+    oyna = (
+        lay >= MIN_LAYER
+        and (p or 0) >= MIN_BLEND
+        and (n_hist or 0) >= 25
+        and (wlo is None or wlo >= MIN_WILSON_LO)
+    )
     if oyna:
-        lines.append(f"KARAR: OYNA · {x['name']} {x['odds']} · tek iş · tek birim · isabet bandı")
+        ev = x.get("ev")
+        lines.append(
+            f"KARAR: OYNA · {x['name']} {x['odds']} · tek iş · yarım Kelly"
+            + (f" · EV {ev}" if ev is not None else "")
+        )
     else:
         lines.append("KARAR: GEÇ")
         if lay < MIN_LAYER:
             lines.append("Katmanlar aynı işte durmuyor.")
         elif (p or 0) < MIN_BLEND:
             lines.append(f"Birleşik %{(p or 0):.0f} < %{MIN_BLEND:.0f}.")
-        elif (n_hist or 0) < 20:
+        elif (n_hist or 0) < 25:
             lines.append(f"Benzer maç {n_hist or 0}; örnek yetmez.")
+        elif wlo is not None and wlo < MIN_WILSON_LO:
+            lines.append(f"Wilson alt %{wlo} < %{MIN_WILSON_LO:.0f} (küçük n cezası).")
     return lines[:8]

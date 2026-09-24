@@ -106,12 +106,24 @@ def load_league(code: str) -> list[dict]:
             "o25": tot >= 3,
             "btts": hg > 0 and ag > 0,
             "ms": "H" if hg > ag else ("A" if ag > hg else "D"),
-            "b365h": _f(row.get("B365H")),
-            "b365d": _f(row.get("B365D")),
-            "b365a": _f(row.get("B365A")),
-            "b365o25": _f(row.get("B365>2.5") or row.get("BbAv>2.5")),
+            "b365h": _f(row.get("B365CH") or row.get("B365H")),
+            "b365d": _f(row.get("B365CD") or row.get("B365D")),
+            "b365a": _f(row.get("B365CA") or row.get("B365A")),
+            "b365o25": _f(row.get("B365C>2.5") or row.get("B365>2.5") or row.get("BbAv>2.5")),
+            "b365u25": _f(row.get("B365C<2.5") or row.get("B365<2.5")),
+            "hh": _i(row.get("HTHG")),
+            "ha": _i(row.get("HTAG")),
         })
     return rows
+
+
+def _i(v):
+    try:
+        if v in (None, ""):
+            return None
+        return int(float(str(v).replace(",", ".")))
+    except Exception:
+        return None
 
 
 def _f(v):

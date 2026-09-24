@@ -1,6 +1,6 @@
-# ATASU Intelligence 5.2.0
+# ATASU Intelligence 5.5.0
 
-Geçmiş iddaa oranlarıyla benzer maç tarama, Excel özeti, +6 bant, Kelly / Wilson, Maçkolik bülten ve puan durumu.
+Geçmiş iddaa oranlarıyla benzer maç tarama, Dixon-Coles, Wilson/Kelly, Maçkolik bülten ve puan durumu.
 
 ## Çalıştır
 
@@ -14,8 +14,9 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 ## Kullanım
 
 1. Maçkolik maç linkini yapıştır veya Günlük bülten → Tara
-2. Motor maçı liginde arar: puan, form, 2.5Ü, KG
+2. Motor lig tablosu + form + 2.5Ü + KG çeker
 3. Tercih yalnızca bültende açık iddaa seçeneklerinden üretilir
-4. 3,5 üst yoksa o market konuşulmaz
+4. OYNA için: hiza, birleşik ≥%63, n≥25, Wilson alt ≥%52, oran 1.30–2.20
+5. Stake: yarım Kelly
 
 Yarım Kelly kullan. Eşleşen maç < 30 ise yüzdelere güvenme.

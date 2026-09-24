@@ -45,6 +45,12 @@ from mackolik_standing import (
 )
 from updater import run_update, remember_season, _load_state
 from extra_feeds import lookup as fd_lookup
+from pipeline import build_pipeline, lines_from_pipeline
+from banko import evaluate as banko_evaluate, lines as banko_lines
+try:
+    from ai_coach import compose as coach_compose
+except Exception:
+    coach_compose = None
 
 
 def _standing(home, away="", league=""):
@@ -58,6 +64,12 @@ def _standing(home, away="", league=""):
     if pack is None:
         pack = {"ok": False, "home": home, "away": away}
     pack["extra"] = extra
+    try:
+        pack["pipeline"] = build_pipeline(
+            home or "", away or "", standing=pack, extra=extra, league=league or ""
+        )
+    except Exception as e:
+        pack["pipeline"] = {"ok": False, "note": str(e)[:80]}
     an = pack.setdefault("analysis", {})
     if extra.get("ok"):
         if an.get("combo_o25") is None and extra.get("combo_o25") is not None:
@@ -77,7 +89,7 @@ def _standing(home, away="", league=""):
     return pack
 
 
-app = FastAPI(title="ATASU Intelligence", version="5.4.0")
+app = FastAPI(title="ATASU Intelligence", version="5.5.0")
 WEIGHTS = {
     "h": 1.2, "d": 1.0, "a": 1.2,
     "u25": 1.1, "o25": 1.1,
@@ -344,7 +356,7 @@ def dixon_coles(lh, la, rho=-0.13, nmax=8):
         return 1.0
 
     cells = []
-    p_h = p_d = p_a = p_o25 = p_u25 = p_btts = p_g6 = p_ht_proxy = 0.0
+    p_h = p_d = p_a = p_o25 = p_u25 = p_o35 = p_btts = p_g6 = p_ht_proxy = 0.0
     tot = 0.0
     for h in range(0, nmax + 1):
         ph = poisson_pmf(h, lh)
@@ -369,6 +381,8 @@ def dixon_coles(lh, la, rho=-0.13, nmax=8):
             p_o25 += p
         else:
             p_u25 += p
+        if t >= 4:
+            p_o35 += p
         if h and a:
             p_btts += p
         if t >= 6:
@@ -385,6 +399,8 @@ def dixon_coles(lh, la, rho=-0.13, nmax=8):
         "ms2": round(p_a * 100, 1),
         "p_o25": round(p_o25 * 100, 1),
         "p_u25": round(p_u25 * 100, 1),
+        "p_o35": round(p_o35 * 100, 1),
+        "p_u35": round((1 - p_o35) * 100, 1),
         "p_btts": round(p_btts * 100, 1),
         "p_g6": round(p_g6 * 100, 1),
         "top": scores[:8],
@@ -427,24 +443,66 @@ def no_vig_group(odds_map):
     return out
 
 
-def lh_style_engine(q, stats_obj=None):
-    """LH Bet çekirdeğinin ATASU uyarlaması: λ + Dixon-Coles + no-vig EV."""
+def consensus_lambda(q, stats_obj=None, standing=None):
+    """Tek λ ev/dep: tablo + football-data form + oran + kalıp. Hepsi aynı DC'ye gider."""
     stats_obj = stats_obj or {}
-    lam = expected_goals(q)
-    if not lam and stats_obj.get("avg_goals"):
-        lam = stats_obj["avg_goals"]
-    if not lam:
-        return {"ok": False, "reason": "λ yok"}
-    if stats_obj.get("avg_goals") and stats_obj.get("avg_home_goals"):
-        share = stats_obj["avg_home_goals"] / max(stats_obj["avg_goals"], 0.1)
-    elif q.get("h") and q.get("a"):
+    standing = standing or {}
+    an = standing.get("analysis") or {}
+    extra = standing.get("extra") or {}
+    cands_h, cands_a = [], []
+
+    if an.get("exp_home") and an.get("exp_away"):
+        cands_h.append((float(an["exp_home"]), 1.3))
+        cands_a.append((float(an["exp_away"]), 1.3))
+    hf, af = extra.get("home_form") or {}, extra.get("away_form") or {}
+    if hf.get("gf_pg") is not None and af.get("gf_pg") is not None:
+        # ev gol atışı ev sahada, dep gol atışı dışarıda — kaba
+        cands_h.append((0.65 * float(hf["gf_pg"]) + 0.35 * float(af.get("ga_pg") or hf["gf_pg"]), 1.0))
+        cands_a.append((0.65 * float(af["gf_pg"]) + 0.35 * float(hf.get("ga_pg") or af["gf_pg"]), 1.0))
+    lam_odds = expected_goals(q)
+    share = 0.55
+    if q.get("h") and q.get("a"):
         ph, pa = implied(q["h"]) or 0.4, implied(q["a"]) or 0.3
-        share = 0.5 + 0.25 * ((ph - pa) / max(ph + pa, 0.05))
-    else:
-        share = 0.55
-    share = min(0.78, max(0.22, share))
-    lh = max(0.15, lam * share)
-    la = max(0.15, lam - lh)
+        share = 0.5 + 0.28 * ((ph - pa) / max(ph + pa, 0.05))
+        share = min(0.76, max(0.24, share))
+    if lam_odds:
+        cands_h.append((lam_odds * share, 0.9))
+        cands_a.append((lam_odds * (1 - share), 0.9))
+    if stats_obj.get("avg_goals"):
+        ag = float(stats_obj["avg_goals"])
+        hs = stats_obj.get("avg_home_goals")
+        if hs:
+            cands_h.append((float(hs), 0.6))
+            cands_a.append((max(0.2, ag - float(hs)), 0.6))
+        else:
+            cands_h.append((ag * share, 0.5))
+            cands_a.append((ag * (1 - share), 0.5))
+
+    def blend(cands, default):
+        if not cands:
+            return default
+        num = sum(v * w for v, w in cands)
+        den = sum(w for _, w in cands)
+        return max(0.20, min(3.40, num / den))
+
+    lh = blend(cands_h, 1.35)
+    la = blend(cands_a, 1.15)
+    return {
+        "lambda_home": round(lh, 2),
+        "lambda_away": round(la, 2),
+        "lambda_total": round(lh + la, 2),
+        "sources": len(cands_h),
+        "share": round(share, 3),
+    }
+
+
+def lh_style_engine(q, stats_obj=None, standing=None):
+    """Tek konsensüs λ → tek Dixon-Coles. Katmanlar ayrı yüzde basmaz."""
+    stats_obj = stats_obj or {}
+    cons = consensus_lambda(q, stats_obj, standing)
+    lh, la = cons["lambda_home"], cons["lambda_away"]
+    if not lh or not la:
+        return {"ok": False, "reason": "λ yok", "consensus": cons}
     dc = dixon_coles(lh, la)
     groups = []
     for keys in (["h", "d", "a"], ["u25", "o25"], ["btts", "nobtts"], ["u35", "o35"]):
@@ -459,6 +517,8 @@ def lh_style_engine(q, stats_obj=None):
         "o25": dc["p_o25"] if dc else None,
         "u25": dc["p_u25"] if dc else None,
         "btts": dc["p_btts"] if dc else None,
+        "o35": dc.get("p_o35") if dc else None,
+        "u35": dc.get("p_u35") if dc else None,
     }
     for k, mp in model_p.items():
         if mp is None or not q.get(k):
@@ -483,7 +543,10 @@ def lh_style_engine(q, stats_obj=None):
     edges.sort(key=lambda x: x["ev_percent"], reverse=True)
     return {
         "ok": True,
-        "lambda_total": lam,
+        "lambda_total": cons["lambda_total"],
+        "lambda_home": cons["lambda_home"],
+        "lambda_away": cons["lambda_away"],
+        "consensus": cons,
         "dixon_coles": dc,
         "no_vig": groups,
         "edges": edges,
@@ -1112,9 +1175,10 @@ def meta():
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "markets": MARKETS,
-        "version": "5.2.3",
+        "version": "5.5.0",
         "warning": HISTORY_WARNING,
         "rule": "Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır. Puan durumu Maçkolik arşivinden çekilir.",
+        "ledger": (ROOT / "data" / "ledger.json").exists(),
     }
 
 
@@ -1383,7 +1447,7 @@ def from_mac(req: MacIdReq):
 def selftest():
     return {
         "ok": True,
-        "version": "5.2.3",
+        "version": "5.5.0",
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "endpoints": ["/api/match-link", "/api/odds", "/api/exact-odds", "/api/plus6", "/api/betwatch"],
@@ -1506,13 +1570,13 @@ def odds_scan(req: OddsReq):
     bw = betwatch_find(req.title or "", q=q)
     bw["signals"] = money_signals(s, bw.get("overlay"), q)
     p6 = plus6_payload(q)
-    lh = lh_style_engine(q, s)
     ev_name, dep_name = _parse_teams(req.title or "")
     standing = None
     try:
         standing = _standing(ev_name or "", dep_name or "", req.league or "")
     except Exception:
         standing = None
+    lh = lh_style_engine(q, s, standing)
     yorum = compact_yorum(
         s, matches, title=req.title or "", league=req.league or "", q=q, bw=bw, p6=p6, lh=lh, standing=standing,
     )
@@ -2155,11 +2219,48 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
         lines.append("Bu oran bandında sonuçlu geçmiş maç yok.")
     bw = betwatch_find(match_title, q=q)
     bw["signals"] = money_signals(s, bw.get("overlay"), q)
-    lh = lh_style_engine(q, s)
+    lh = lh_style_engine(q, s, standing)
     yorum = compact_yorum(
         s, matches, title=match_title or title, league=league, q=q, bw=bw, p6=p6, lh=lh, standing=standing,
     )
     open_rank = score_open_picks(q, s, lh, standing)
+    banko = None
+    if open_rank:
+        banko = banko_evaluate(open_rank[0], n, standing=standing, lh=lh, stats_obj=s)
+        if banko and banko.get("need"):
+            extra_b = "\n".join(banko_lines(banko))
+            if "[[ATASU_TERCIH]]" in yorum:
+                yorum = yorum.replace("[[ATASU_TERCIH]]", extra_b + "\n\n[[ATASU_TERCIH]]", 1)
+            else:
+                yorum = yorum + "\n" + extra_b
+    coach = None
+    if coach_compose:
+        try:
+            coach = coach_compose({
+                "standing": standing, "lh": lh, "stats": s,
+                "sample": n, "matched": len(matches), "yorum": yorum,
+            }, standing)
+        except Exception as e:
+            coach = {"ok": False, "note": str(e)[:80]}
+    if banko and banko.get("karar") == "OYNA":
+        try:
+            led = ROOT / "data" / "ledger.json"
+            rows = json.loads(led.read_text(encoding="utf-8")) if led.exists() else []
+            pk = (banko.get("pick") or {})
+            rows.append({
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "title": match_title,
+                "pick": pk.get("name") or "",
+                "odds": pk.get("odds"),
+                "karar": "OYNA",
+                "label": banko.get("label"),
+                "settled": None,
+                "auto": True,
+            })
+            led.parent.mkdir(parents=True, exist_ok=True)
+            led.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
     return {
         "title": title,
         "text": " ".join(lines),
@@ -2174,8 +2275,11 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
         "betwatch": bw,
         "lh_model": lh,
         "standing": standing,
+        "coach": coach,
+        "banko": banko,
         "open_markets": [{"key": k, "name": n, "odds": o} for k, n, o in open_markets(q)],
         "open_picks": open_rank,
+        "version": "5.5.0",
     }
 
 
@@ -2313,7 +2417,7 @@ def api_update():
 def api_update_status():
     st = _load_state()
     return {
-        "version": "5.2.3",
+        "version": "5.5.0",
         "history_n": len(HISTORY),
         "last": st.get("last"),
         "added_total": st.get("added"),
@@ -2321,3 +2425,87 @@ def api_update_status():
         "note": "Kod kendini yazmaz. POST /api/update canlı cache + history hasadı yapar.",
     }
 
+
+
+from pydantic import BaseModel as _BM
+
+
+class LiveWinReq(_BM):
+    minute: int | None = None
+    score: str | None = None
+    home: str = ""
+    away: str = ""
+    o25: float | None = None
+
+
+@app.post("/api/live-window")
+def api_live_window(req: LiveWinReq):
+    m = req.minute
+    alert = None
+    note = "Pre-match banko canlida iptal edilebilir."
+    if m is None:
+        return {"ok": False, "note": "dakika yok"}
+    if 60 <= m <= 75:
+        alert = "60-75 pencere"
+        note = "Ikinci yari tempo. 0-0 / 1-0 ise late 2.5U veya 2.Y gol bak; favori kilitlendiyse cekil."
+    elif m >= 80:
+        alert = "gec"
+        note = "Yeni pre-match banko acma."
+    return {
+        "ok": True,
+        "minute": m,
+        "score": req.score,
+        "alert": alert,
+        "note": note,
+        "window_60_75": bool(m is not None and 60 <= m <= 75),
+    }
+
+
+LEDGER = ROOT / "data" / "ledger.json"
+
+
+def _ledger_load():
+    if LEDGER.exists():
+        try:
+            return json.loads(LEDGER.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return []
+
+
+class LedgerReq(_BM):
+    title: str = ""
+    pick: str = ""
+    odds: float | None = None
+    karar: str = ""
+    label: str = ""
+    settled: str | None = None  # HIT / MISS
+
+
+@app.post("/api/ledger")
+def api_ledger(req: LedgerReq):
+    rows = _ledger_load()
+    rows.append({
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "title": req.title,
+        "pick": req.pick,
+        "odds": req.odds,
+        "karar": req.karar,
+        "label": req.label,
+        "settled": req.settled,
+    })
+    LEDGER.parent.mkdir(parents=True, exist_ok=True)
+    LEDGER.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+    hits = sum(1 for r in rows if r.get("settled") == "HIT")
+    miss = sum(1 for r in rows if r.get("settled") == "MISS")
+    n = hits + miss
+    return {"ok": True, "n": len(rows), "settled": n, "hit_pct": round(100 * hits / n, 1) if n else None}
+
+
+@app.get("/api/ledger")
+def api_ledger_get():
+    rows = _ledger_load()
+    hits = sum(1 for r in rows if r.get("settled") == "HIT")
+    miss = sum(1 for r in rows if r.get("settled") == "MISS")
+    n = hits + miss
+    return {"ok": True, "rows": rows[-80:], "hit_pct": round(100 * hits / n, 1) if n else None, "settled": n}

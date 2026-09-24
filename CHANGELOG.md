@@ -1,19 +1,22 @@
-# ATASU 5.2.1
+# ATASU 5.5.0
 
-- Derin lig analizi: ev-iç / dep-dış gol gücü → eşleşme λ
-- Taraf 2.5Ü ve KG (genel ortalama değil, ev sahada + dep deplasmanda)
-- Opta: TSO, şut, isabet, korner, CS
-- İY/MS iç saha dağılımı (önde kayıp / geriden gelme)
-- Son hafta sonuçları standing.r üzerinden
-- Açık piyasa EV hesabı bu katmanı karışıma katar
-
-# ATASU 5.2.0
-
-- Maçkolik Puan-Durumu entegrasyonu
-- Tercih yalnızca açık iddaa piyasaları
+- Tercih: Wilson alt bant (%52), kupon 1.30–2.20, MS1 / 2.5Ü / KG öncelik
+- OYNA = yarım Kelly; küçük n cezası
+- AI coach brief cevabına bağlandı (kural metni; API anahtarı varsa LLM)
+- Pipeline 1.1: tablo λ + Opta SOT proxy + fd.csv bayrağı
+- Sürüm tek yerde 5.5.0 (app / meta / update)
 
 # ATASU 5.2.2
 
 - POST /api/update: cache sil + biten maç hasadı
 - UI Güncelle + 15 dk otomatik
-- Tara edilen lig season_id state’e yazılır
+
+# ATASU 5.2.1
+
+- Derin lig analizi: ev-iç / dep-dış gol gücü → eşleşme λ
+- Taraf 2.5Ü ve KG, Opta, İY/MS
+
+# ATASU 5.2.0
+
+- Maçkolik Puan-Durumu entegrasyonu
+- Tercih yalnızca açık iddaa piyasaları

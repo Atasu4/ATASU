@@ -371,6 +371,14 @@ async function analyzeText(text, title){
   if(parts.tercih){
     html += '<div class="tercih"><div class="kicker">Tercih · yalnızca açık iddaa</div><p>'+esc(parts.tercih)+'</p></div>';
   }
+  if(brief.banko){
+    const b = brief.banko;
+    html += '<div class="verdict"><div class="kicker">Banko kapi '+b.gates_yes+'/'+b.gates_total+' · '+esc(b.label||'')+'</div>';
+    html += '<p class="yorum">'+esc((b.missing&&b.missing.length)?'Acik: '+b.missing.join(', '):'Dokuz kapi tamam')+'</p></div>';
+  }
+  if(brief.coach && brief.coach.text){
+    html += '<div class="verdict"><div class="kicker">Coach 5.5</div><p class="yorum">'+esc(brief.coach.text)+'</p></div>';
+  }
   $('outModel').innerHTML = html;
 
   let det = '';
