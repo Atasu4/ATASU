@@ -13,7 +13,6 @@ HISTORY_FILE = ROOT / "data" / "history.json"
 STATE_FILE = ROOT / "data" / "update_state.json"
 
 # Sık kullanılan ligler — Tara sonrası season_id state'e eklenir
-UPDATER_VERSION = "7.1.0"
 DEFAULT_SEASONS = [73482]  # Süper Lig güncel
 
 
@@ -165,6 +164,5 @@ def run_update(history: list[dict], extra_seasons: list[int] | None = None) -> d
         "history_n": len(history),
         "last": st["last"],
         "ttl_sec": TTL,
-        "version": UPDATER_VERSION,
         "note": "Kod sürümü değişmez. Canlı tablo cache silindi; biten maçlar history.json'a eklendi.",
     }

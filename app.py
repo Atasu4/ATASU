@@ -7,8 +7,7 @@ from urllib.parse import urlparse
 from html import unescape
 from pathlib import Path
 from collections import Counter
-import json, re, os, time, threading
-from storage_v71 import PredictionStore
+import json, re, os, time
 
 ROOT = Path(__file__).parent
 HISTORY_FILE = ROOT / "data" / "history.json"
@@ -78,12 +77,7 @@ def _standing(home, away="", league=""):
     return pack
 
 
-APP_VERSION = "7.1.0"
-app = FastAPI(title="ATASU Intelligence", version=APP_VERSION)
-STORE = PredictionStore(ROOT / "data" / "atasu.sqlite3")
-if HISTORY:
-    STORE.import_history(HISTORY)
-    HISTORY = STORE.load_history()
+app = FastAPI(title="ATASU Intelligence", version="5.4.0")
 WEIGHTS = {
     "h": 1.2, "d": 1.0, "a": 1.2,
     "u25": 1.1, "o25": 1.1,
@@ -1118,7 +1112,7 @@ def meta():
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "markets": MARKETS,
-        "version": APP_VERSION,
+        "version": "5.2.3",
         "warning": HISTORY_WARNING,
         "rule": "Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır. Puan durumu Maçkolik arşivinden çekilir.",
     }
@@ -1389,7 +1383,7 @@ def from_mac(req: MacIdReq):
 def selftest():
     return {
         "ok": True,
-        "version": APP_VERSION,
+        "version": "5.2.3",
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "endpoints": ["/api/match-link", "/api/odds", "/api/exact-odds", "/api/plus6", "/api/betwatch"],
@@ -2166,17 +2160,6 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
         s, matches, title=match_title or title, league=league, q=q, bw=bw, p6=p6, lh=lh, standing=standing,
     )
     open_rank = score_open_picks(q, s, lh, standing)
-    prediction_record = None
-    prediction_created = False
-    if open_rank:
-        top = open_rank[0]
-        key = top.get("key")
-        odd = q.get(key)
-        if key and odd and n >= 8:
-            prediction_record, prediction_created = STORE.add_prediction(
-                title=match_title or title, market_key=key, selection=top.get("name") or NAMES.get(key,key),
-                odds=odd, confidence=top.get("score") or top.get("historical_percent"), edge_points=top.get("ev"),
-                sample_size=n, evidence=top, model_version=APP_VERSION)
     return {
         "title": title,
         "text": " ".join(lines),
@@ -2193,9 +2176,6 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
         "standing": standing,
         "open_markets": [{"key": k, "name": n, "odds": o} for k, n, o in open_markets(q)],
         "open_picks": open_rank,
-        "prediction_record": prediction_record,
-        "prediction_created": prediction_created,
-        "storage": "sqlite",
     }
 
 
@@ -2322,12 +2302,8 @@ def api_update():
     try:
         out = run_update(HISTORY)
         HISTORY = json.loads(HISTORY_FILE.read_text(encoding="utf-8")) if HISTORY_FILE.exists() else HISTORY
-        out["history_import"] = STORE.import_history(HISTORY)
-        HISTORY = STORE.load_history()
         out["history_n"] = len(HISTORY)
-        out["version"] = APP_VERSION
-        settled = STORE.auto_settle(HISTORY)
-        out["predictions_settled"] = len(settled)
+        out["version"] = "5.2.3"
         return out
     except Exception as e:
         raise HTTPException(502, "Güncelleme alınamadı: " + str(e)[:160])
@@ -2337,7 +2313,7 @@ def api_update():
 def api_update_status():
     st = _load_state()
     return {
-        "version": APP_VERSION,
+        "version": "5.2.3",
         "history_n": len(HISTORY),
         "last": st.get("last"),
         "added_total": st.get("added"),
@@ -2345,54 +2321,3 @@ def api_update_status():
         "note": "Kod kendini yazmaz. POST /api/update canlı cache + history hasadı yapar.",
     }
 
-
-
-@app.get("/api/performance")
-def performance_api(limit: int = 100):
-    return STORE.summary(max(1,min(limit,500)))
-
-class SettlePredictionReq(BaseModel):
-    prediction_id: int
-    won: bool
-    odds: float | None = Field(None, gt=1, le=100)
-    result_ft: str = ""
-
-@app.post("/api/performance/settle")
-def settle_prediction(req: SettlePredictionReq):
-    row=STORE.settle(req.prediction_id,won=req.won,odds=req.odds,ft=req.result_ft or None,source="manual")
-    if not row: raise HTTPException(404,"Tahmin bulunamadı")
-    return {"ok":True,"prediction":row,"performance":STORE.summary()}
-
-@app.post("/api/performance/auto-settle")
-def auto_settle_predictions():
-    rows=STORE.auto_settle(HISTORY)
-    return {"ok":True,"settled":len(rows),"predictions":rows,"performance":STORE.summary()}
-
-
-@app.get("/api/predictions")
-def prediction_explorer(status: str = "", market: str = "", model_version: str = "", date_from: str = "", date_to: str = "", query: str = "", limit: int = 100, offset: int = 0):
-    return STORE.list_predictions(status=status,market=market,model_version=model_version,date_from=date_from,date_to=date_to,query=query,limit=limit,offset=offset)
-
-@app.get("/api/model-comparison")
-def model_comparison_api():
-    return {"models":STORE.model_comparison()}
-
-@app.get("/api/storage-health")
-def storage_health():
-    return {"ok":True,"version":APP_VERSION,"database":str(STORE.path.name),"history_rows":STORE.history_count(),"performance":STORE.summary(5)}
-
-_SETTLE_INTERVAL=max(60,int(os.environ.get("ATASU_SETTLE_INTERVAL","900")))
-_scheduler_stop=threading.Event()
-def _settlement_loop():
-    while not _scheduler_stop.wait(_SETTLE_INTERVAL):
-        try: STORE.auto_settle(HISTORY)
-        except Exception: pass
-
-@app.on_event("startup")
-def start_settlement_scheduler():
-    if not any(t.name=="atasu-settlement" and t.is_alive() for t in threading.enumerate()):
-        threading.Thread(target=_settlement_loop,name="atasu-settlement",daemon=True).start()
-
-@app.on_event("shutdown")
-def stop_settlement_scheduler():
-    _scheduler_stop.set()

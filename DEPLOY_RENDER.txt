@@ -1,0 +1,16 @@
+ATASU V7.1 - RENDER KURULUMU
+
+1. Bu paketteki dosyalarin tamamini GitHub deponun ana klasorune yukle.
+2. Render servis turu Web Service olmali.
+3. Build Command:
+   pip install -r requirements.txt
+4. Start Command:
+   uvicorn app:app --host 0.0.0.0 --port $PORT
+5. Manual Deploy > Clear build cache & deploy sec.
+6. Basarili log:
+   Uvicorn running on http://0.0.0.0:10000
+
+Notlar:
+- render.yaml ayarlari otomatik tanimlar.
+- data/history.json ve yardimci Python modullerini depoda koru.
+- Render kalici disk kullanilmiyorsa SQLite dosyasi yeniden deploy sonrasinda kalici olmayabilir.
