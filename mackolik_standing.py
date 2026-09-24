@@ -966,10 +966,12 @@ def _ima(odd):
         return None
 
 
+# İsabet modu: kısa-orta bant (history hit ~%60–66). Yield hâlâ eksi olabilir.
 MIN_ODD = 1.30
-MAX_ODD = 2.35
-MIN_BLEND = 63.0
+MAX_ODD = 1.60
+MIN_BLEND = 60.0
 MIN_LAYER = 2
+HIT_KEYS = ("h", "o25", "btts")  # history'de bu bantta en yüksek isabet
 
 
 def _layers(x) -> int:
@@ -978,54 +980,62 @@ def _layers(x) -> int:
         n += 1
     if isinstance(x.get("model_percent"), (int, float)) and x["model_percent"] >= 58:
         n += 1
-    if isinstance(x.get("blend_percent"), (int, float)) and x["blend_percent"] >= 62:
+    if isinstance(x.get("blend_percent"), (int, float)) and x["blend_percent"] >= 60:
         n += 1
+    if x.get("key") in HIT_KEYS:
+        n += 1
+    try:
+        o = float(x.get("odds") or 99)
+        if 1.30 <= o <= 1.50:
+            n += 1
+    except Exception:
+        pass
     return n
 
 
 def tercih_from_open(ranked: list[dict], n_hist: int) -> list[str]:
-    """Minimum kayıp: yalnızca 1.30–2.35 açık iddaa. 1.07–1.10 yok. Hiza yoksa GEÇ."""
+    """İsabet modu: 1.30–1.60, MS1 / 2.5Ü / KG öncelik. 1.10 yok. 1.80+ yok."""
     if not ranked:
         return ["Bültende açık iddaa oranı yok.", "KARAR: GEÇ"]
-    band = []
-    disi = []
+    band, disi = [], []
     for x in ranked:
         try:
             o = float(x.get("odds") or 0)
         except Exception:
             continue
-        if MIN_ODD <= o <= MAX_ODD:
-            band.append(x)
-        else:
-            disi.append(x)
-    band.sort(key=lambda x: (-_layers(x), -(x.get("blend_percent") or 0)))
-    lines = [f"Kupon bandı {MIN_ODD}–{MAX_ODD}. 1.10'luk favori yok sayılır."]
-    if disi:
-        kisa = [f"{x['name']} {x['odds']}" for x in disi if float(x.get("odds") or 0) < MIN_ODD]
-        if kisa:
-            lines.append("Band dışı kısa (yok sayıldı): " + ", ".join(kisa[:4]) + ".")
+        (band if MIN_ODD <= o <= MAX_ODD else disi).append(x)
+    band.sort(key=lambda x: (-_layers(x), float(x.get("odds") or 9), -(x.get("blend_percent") or 0)))
+    lines = [
+        f"İsabet modu {MIN_ODD}–{MAX_ODD}. Hedef hit ~%60+. 1.10 ve 1.80+ yok."
+    ]
+    kisa = [f"{x['name']} {x['odds']}" for x in disi if float(x.get("odds") or 0) < MIN_ODD]
+    uzun = [f"{x['name']} {x['odds']}" for x in disi if float(x.get("odds") or 0) > MAX_ODD]
+    if kisa:
+        lines.append("Çok kısa (yok): " + ", ".join(kisa[:3]) + ".")
+    if uzun:
+        lines.append("Uzun oran isabet düşürür (yok): " + ", ".join(uzun[:3]) + ".")
     if not band:
-        lines.append("Açık iddaada bu bantta iş yok.")
+        lines.append("1.30–1.60 açık iş yok.")
         lines.append("KARAR: GEÇ")
-        return lines[:6]
-    x = band[0]
-    p = x.get("blend_percent")
-    h = x.get("hist_percent")
-    m = x.get("model_percent")
+        return lines[:7]
+    # MS1 / 2.5Ü / KG varsa onları öne al
+    pref = [x for x in band if x.get("key") in HIT_KEYS]
+    x = (pref or band)[0]
+    p, h, m = x.get("blend_percent"), x.get("hist_percent"), x.get("model_percent")
     lay = _layers(x)
     lines.append(
         f"Aday: {x['name']} {x['odds']} · kalıp %{h if h is not None else '-'} · "
-        f"model %{m if m is not None else '-'} · birleşik %{p if p is not None else '-'} · hiza {lay}/3"
+        f"model %{m if m is not None else '-'} · birleşik %{p if p is not None else '-'} · hiza {lay}/5"
     )
-    oyna = lay >= MIN_LAYER and (p or 0) >= MIN_BLEND and (n_hist or 0) >= 25
+    oyna = lay >= MIN_LAYER and (p or 0) >= MIN_BLEND and (n_hist or 0) >= 20
     if oyna:
-        lines.append(f"KARAR: OYNA · {x['name']} {x['odds']} · tek iş · tek birim")
+        lines.append(f"KARAR: OYNA · {x['name']} {x['odds']} · tek iş · tek birim · isabet bandı")
     else:
         lines.append("KARAR: GEÇ")
         if lay < MIN_LAYER:
             lines.append("Katmanlar aynı işte durmuyor.")
         elif (p or 0) < MIN_BLEND:
             lines.append(f"Birleşik %{(p or 0):.0f} < %{MIN_BLEND:.0f}.")
-        elif (n_hist or 0) < 25:
+        elif (n_hist or 0) < 20:
             lines.append(f"Benzer maç {n_hist or 0}; örnek yetmez.")
-    return lines[:7]
+    return lines[:8]
