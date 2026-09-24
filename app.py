@@ -48,10 +48,6 @@ from extra_feeds import lookup as fd_lookup
 from pipeline import build_pipeline, lines_from_pipeline
 from banko import evaluate as banko_evaluate, lines as banko_lines
 try:
-    from mackolik_news import collect as news_collect
-except Exception:
-    news_collect = None
-try:
     from ai_coach import compose as coach_compose
 except Exception:
     coach_compose = None
@@ -90,11 +86,6 @@ def _standing(home, away="", league=""):
             bits.append(f"fd form 2.5Ü %{extra['combo_o25']}")
         if bits:
             flags.append(" · ".join(bits))
-    if news_collect:
-        try:
-            pack["news"] = news_collect(home or "", away or "", pack)
-        except Exception as e:
-            pack["news"] = {"ok": False, "note": str(e)[:80]}
     return pack
 
 
@@ -1206,10 +1197,11 @@ def _odd(v):
 def _parse_program_rows(raw: str):
     rows = []
     for m in re.finditer(
-        r"\[(\d+),'((?:\\'|[^'])*)',\d+,'((?:\\'|[^'])*)','?\d+'?,\d+,'(\d+:\d+)','(\d{2}\.\d{2}\.\d{4})',(.*?)\](?=,\[|\])",
+        r"\[(\d+),'((?:\\'|[^'])*)',\d+,'((?:\\'|[^'])*)','?\d+'?,\d+,'(\d+:\d+)','(\d{2}\.\d{2}\.\d{4})'(?:,(.*?))?\](?=,\[|\]|\})",
         raw,
     ):
         mac_id, home, away, time, date_s, rest = m.groups()
+        rest = rest or ""
         parts = []
         buf = ""
         in_q = False
@@ -1247,32 +1239,56 @@ def _parse_program_rows(raw: str):
     return rows
 
 
+def _bulletin_raw():
+    last_err = None
+    for week in (1, 0, 2):
+        url = (
+            "https://arsiv.mackolik.com/AjaxHandlers/ProgramDataHandler.ashx"
+            f"?type=6&sortValue=DATE&week={week}&day=-1&sort=-1&sortDir=1&groupId=-1&np=0&sport=1"
+        )
+        try:
+            raw = _fetch(url, limit=4000000)
+            if raw and re.search(r"\[\d+,'", raw):
+                return raw
+        except Exception as e:
+            last_err = e
+            continue
+    raise HTTPException(502, "Bülten alınamadı: " + str(last_err or "boş cevap")[:120])
+
+
 @app.get("/api/bulletin")
 def bulletin(date: str = ""):
-    """Iddaa program listesi — resmi API değil, tek GET, kırılabilir."""
-    url = "https://arsiv.mackolik.com/AjaxHandlers/ProgramDataHandler.ashx?type=6&sortValue=DATE&week=1&day=-1&sort=-1&sortDir=1&groupId=-1&np=0&sport=1"
-    try:
-        raw = _fetch(url, limit=3000000)
-    except Exception as e:
-        raise HTTPException(502, "Bülten alınamadı: " + str(e)[:120])
+    """Iddaa program listesi — resmi API değil."""
+    raw = _bulletin_raw()
     rows = _parse_program_rows(raw)
+    seen, uniq = set(), []
+    for r in rows:
+        k = r.get("mac_id")
+        if k in seen:
+            continue
+        seen.add(k)
+        uniq.append(r)
+    rows = uniq
     want = ""
+    filtered = rows
     if date.strip():
-        # accept 2026-09-22 or 22.09.2026
         ds = date.strip()
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", ds):
             y, mo, d = ds.split("-")
             want = f"{d}.{mo}.{y}"
         else:
             want = ds
-        rows = [r for r in rows if r["date"] == want]
+        filtered = [r for r in rows if r["date"] == want]
+        if not filtered:
+            filtered = rows
+            want = (want + " yok · hafta") if want else "hafta"
     return {
         "ok": True,
         "source": "Mackolik ProgramDataHandler",
-        "count": len(rows),
+        "count": len(filtered),
         "date": want or "hafta",
-        "matches": rows[:400],
-        "note": "Resmi API değil. Tek istek. Site şeması değişirse liste boşalır.",
+        "matches": filtered[:500],
+        "note": "Resmi API değil. Bugün boşsa haftalık liste döner.",
     }
 
 
@@ -1298,7 +1314,7 @@ def _html_to_text(raw: str):
 
 def _fetch(url, limit=2500000):
     r = Request(url, headers=UA)
-    with urlopen(r, timeout=15) as f:
+    with urlopen(r, timeout=25) as f:
         data = f.read(limit)
         ctype = f.headers.get_content_charset() or "utf-8"
     try:
@@ -1867,9 +1883,6 @@ def narrative_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, l
     if an.get("flags"):
         ac.append(", ".join(an["flags"]))
     p1.append("Maç: " + "; ".join(ac) + ".")
-    nw = (standing or {}).get("news") or {}
-    if nw.get("ok") and nw.get("lines"):
-        p1.append("Haber: " + " | ".join(nw["lines"][:2]) + ".")
 
     # 2. İddaa fiyatı vs okuma
     p2 = []

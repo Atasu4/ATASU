@@ -113,7 +113,6 @@ tr:hover td{background:rgba(228,201,138,.04)}
 }
 .b-card.on{border-color:var(--gold2);background:rgba(184,148,90,.1)}
 .b-card .tm{font:500 13px/1.35 Manrope;color:var(--snow)}
-.b-card .lg{font:400 10px/1.3 "IBM Plex Mono",monospace;color:var(--fog);margin-top:3px}
 .b-card .saat{font:500 15px "IBM Plex Mono",monospace;color:var(--gold)}
 .b-card .odds{font:400 10px "IBM Plex Mono",monospace;color:var(--fog);margin-top:4px}
 .b-card .pick{padding:11px 14px;min-width:64px}
@@ -167,7 +166,7 @@ tr:hover td{background:rgba(228,201,138,.04)}
   </section>
   <section id="panel-bulten" class="card hidden">
     <p class="kicker">Günlük maç bülteni</p>
-    <p class="hint">Takım yaz veya lig seç. Kartın Tara’sına bas; liste burada kalır, rapor diğer sekmede açılır.</p>
+    <p class="hint">Satırın Tara’sına bas. Rapor ayrı sekmede açılır, liste burada kalır.</p>
     <div id="bulletinBox"></div>
   </section>
   <section id="panel-detay" class="card hidden">
@@ -258,38 +257,46 @@ function clearAll(){
   ['outModel','outExact','outP6','bulletinBox'].forEach(id=>$(id).innerHTML='');
   $('link').value=''; $('lhQ').value='';
 }
+function localISO(){
+  const d = new Date();
+  const p = n => String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
 async function loadBulletin(){
   const box = $('bulletinBox');
-  box.innerHTML = '<p class="mu">Bülten yükleniyor…</p>';
+  box.innerHTML = '<p class="mu">Bülten yükleniyor… Maçkolik programı çekiliyor.</p>';
+  showTab('bulten');
   try{
-    const today = new Date();
-    const iso = today.toISOString().slice(0,10);
-    showTab('bulten');
-    const r = await fetch('/api/bulletin?date='+iso);
-    const j = await r.json();
-    if(!r.ok) throw new Error(j.detail||'bülten yok');
-    const rows = j.matches||[];
-    if(!rows.length){
-      box.innerHTML = '<p class="no">Bugün için satır yok. Haftalık liste deneniyor…</p>';
-      const r2 = await fetch('/api/bulletin');
-      const j2 = await r2.json();
-      renderBulletin(j2.matches||[], j2.date||'hafta');
-      return;
+    const iso = localISO();
+    let r = await fetch('/api/bulletin?date='+iso);
+    let j = await r.json().catch(()=>({}));
+    if(!r.ok){
+      r = await fetch('/api/bulletin');
+      j = await r.json().catch(()=>({}));
     }
+    if(!r.ok) throw new Error(j.detail || ('HTTP '+r.status+' — uvicorn çalışıyor mu?'));
+    let rows = j.matches||[];
+    if(!rows.length){
+      const r2 = await fetch('/api/bulletin');
+      const j2 = await r2.json().catch(()=>({}));
+      rows = j2.matches||[];
+      j = j2;
+    }
+    if(!rows.length) throw new Error('Mackolik program boş döndü. Biraz sonra tekrar dene.');
     renderBulletin(rows, j.date||iso);
   }catch(e){
-    box.innerHTML = '<p class="no">'+(e.message||e)+'</p>';
+    const msg = String(e.message||e);
+    box.innerHTML = '<p class="no">Bülten yok: '+esc(msg)+'</p><p class="hint">Sunucu kapalıysa: uvicorn app:app --port 8000</p>';
   }
 }
 function renderBulletin(rows, label){
   const box = $('bulletinBox');
   if(!rows.length){ box.innerHTML = '<p class="no">Bülten boş.</p>'; return; }
   window._bulten = rows;
-  window._bultenLabel = label;
   const ligs = [...new Set(rows.map(r=>r.league||'').filter(Boolean))].sort();
   box.innerHTML =
     '<div class="b-tools">'+
-      '<input id="bQ" placeholder="Takım ara — galatasaray, norway…">'+
+      '<input id="bQ" placeholder="Takım ara">'+
       '<select id="bLig"><option value="">Tüm ligler ('+rows.length+')</option>'+
         ligs.map(l=>'<option value="'+esc(l)+'">'+esc(l)+' · '+rows.filter(r=>r.league===l).length+'</option>').join('')+
       '</select></div>'+
@@ -302,26 +309,25 @@ function renderBulletin(rows, label){
     const filtered = rows.filter(m=>{
       if(lig && m.league!==lig) return false;
       if(!q) return true;
-      const blob = ((m.home||'')+' '+(m.away||'')+' '+(m.league||'')).toLowerCase();
-      return blob.indexOf(q)!==-1;
+      return ((m.home||'')+' '+(m.away||'')+' '+(m.league||'')).toLowerCase().indexOf(q)!==-1;
     });
-    $('bCount').textContent = filtered.length+' / '+rows.length+' maç · '+label+(lig? ' · '+lig:'');
-    if(!filtered.length){ $('bList').innerHTML = '<p class="b-empty">Eşleşen maç yok. Aramayı sil.</p>'; return; }
+    $('bCount').textContent = filtered.length+' / '+rows.length+' · '+label;
+    if(!filtered.length){ $('bList').innerHTML = '<p class="b-empty">Eşleşen maç yok.</p>'; return; }
     const groups = {};
     filtered.forEach(m=>{
       const k = m.league || 'Diğer';
-      (groups[k] = groups[k] || []).push(m);
+      (groups[k]=groups[k]||[]).push(m);
     });
     let html = '';
     Object.keys(groups).forEach(k=>{
       html += '<div class="b-liga">'+esc(k)+' · '+groups[k].length+'</div>';
       groups[k].forEach(m=>{
         const i = rows.indexOf(m);
-        const on = sel && String(sel)===String(m.mac_id) ? ' on' : '';
+        const on = sel && String(sel)===String(m.mac_id) ? ' on':'';
         html += '<div class="b-card'+on+'" data-i="'+i+'">'+
           '<div class="saat">'+esc(m.time||'—')+'</div>'+
           '<div><div class="tm">'+esc(m.home||'')+' — '+esc(m.away||'')+'</div>'+
-          '<div class="odds">'+(m.h||'—')+' / '+(m.d||'—')+' / '+(m.a||'—')+(m.o25? ' · 2.5Ü '+m.o25:'')+'</div></div>'+
+          '<div class="odds">'+(m.h||'—')+' / '+(m.d||'—')+' / '+(m.a||'—')+'</div></div>'+
           '<button type="button" class="g pick" data-i="'+i+'">Tara</button></div>';
       });
     });
@@ -342,9 +348,6 @@ function renderBulletin(rows, label){
 async function pickBulletin(m){
   if(!m || !m.mac_id) return alert('mac_id yok');
   window._bultenSecim = m;
-  document.querySelectorAll('.b-card').forEach(el=>{
-    el.classList.toggle('on', String(el.getAttribute('data-i'))===String(window._bulten.indexOf(m)));
-  });
   $('lhQ').value = (m.home||'')+' - '+(m.away||'');
   if(m.league) $('league').value = m.league;
   $('outModel').innerHTML = '<p class="mu">Oranlar alınıyor… '+esc($('lhQ').value)+'</p>';
@@ -440,9 +443,6 @@ async function analyzeText(text, title){
   if(st.ok){
     det += '<div class="verdict"><div class="kicker">Maçkolik puan durumu</div>';
     det += '<p class="v-sub">'+esc(st.season_label||'')+' · sezon '+esc(st.season_id||'')+'</p>';
-    if(st.news && st.news.ok && (st.news.lines||[]).length){
-      det += '<p class="yorum">Haber: '+esc((st.news.lines||[]).slice(0,3).join('\n'))+'</p>';
-    }
     function rowLine(r, tag){
       if(!r) return '';
       const fm = (r.form&&r.form.all)? ' · form '+r.form.all : '';
