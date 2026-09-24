@@ -358,6 +358,24 @@ def fetch_iyms(season_id: int) -> dict[int, dict]:
     return _cache_set(key, out)
 
 
+def _opta_num(row: dict, *keys):
+    for k in keys:
+        if k in row and row[k] not in (None, "", "-"):
+            try:
+                return float(row[k])
+            except Exception:
+                continue
+    low = {str(k).lower(): v for k, v in row.items()}
+    for k in keys:
+        v = low.get(str(k).lower())
+        if v not in (None, "", "-"):
+            try:
+                return float(v)
+            except Exception:
+                continue
+    return None
+
+
 def fetch_opta(season_id: int) -> dict[int, dict]:
     key = f"opta:{season_id}"
     hit = _cache_get(key)
@@ -388,6 +406,30 @@ def fetch_opta(season_id: int) -> dict[int, dict]:
         shots = sot + soff
         succ = float(row.get("totalSuccPasses") or 0)
         uns = float(row.get("totalUnsuccPasses") or 0)
+        goals = float(row.get("goals") or 0)
+        conceded = float(row.get("goalsConceded") or 0)
+        pk_att = _opta_num(row, "penaltiesAwarded", "penaltyAttempts", "penalties", "pkAtt")
+        pk_scored = _opta_num(row, "penaltyGoals", "penaltiesScored", "pkGoals")
+        xg_raw = _opta_num(row, "expectedGoals", "xg", "xG", "expected_goals")
+        xga_raw = _opta_num(row, "expectedGoalsAgainst", "xga", "xGA", "expected_goals_against")
+        npxg_raw = _opta_num(row, "nonPenaltyExpectedGoals", "npxg", "npxG", "npXg")
+        xg_shot = (0.32 * sot + 0.07 * soff) if shots else None
+        if npxg_raw is not None:
+            npxg, npxg_src = npxg_raw, "opta"
+        elif xg_raw is not None:
+            pk_xg = 0.76 * (pk_att if pk_att is not None else 0)
+            npxg, npxg_src = max(0.0, xg_raw - pk_xg), "opta-xg-pk"
+        elif xg_shot is not None:
+            pk_xg = 0.76 * (pk_att if pk_att is not None else max(0.0, gp * 0.12))
+            npxg, npxg_src = max(0.0, xg_shot - pk_xg), "sot-proxy"
+        else:
+            npxg, npxg_src = None, None
+        if xga_raw is not None:
+            npxga, npxga_src = xga_raw, "opta"
+        elif conceded:
+            npxga, npxga_src = conceded * 0.95, "ga-proxy"
+        else:
+            npxga, npxga_src = None, None
         out[int(tid)] = {
             "name": team.get("name"),
             "gp": int(row.get("gamesPlayed") or 0),
@@ -398,11 +440,21 @@ def fetch_opta(season_id: int) -> dict[int, dict]:
             "corners_pg": round(float(row.get("cornersTaken") or 0) / gp, 2),
             "key_passes_pg": round(float(row.get("keyPasses") or 0) / gp, 2),
             "clean_sheets": int(row.get("cleanSheets") or 0),
-            "goals": int(row.get("goals") or 0),
-            "conceded": int(row.get("goalsConceded") or 0),
+            "goals": int(goals),
+            "conceded": int(conceded),
             "fouls_pg": round(float(row.get("totalFoulsConceded") or 0) / gp, 2),
             "yellow": int(row.get("yellowCards") or 0),
             "red": int(row.get("totalRedCards") or 0),
+            "xg": round(xg_raw, 2) if xg_raw is not None else (round(xg_shot, 2) if xg_shot is not None else None),
+            "npxg": round(npxg, 2) if npxg is not None else None,
+            "npxg_pg": round(npxg / gp, 2) if npxg is not None and gp else None,
+            "npxga": round(npxga, 2) if npxga is not None else None,
+            "npxga_pg": round(npxga / gp, 2) if npxga is not None and gp else None,
+            "npxg_src": npxg_src,
+            "npxga_src": npxga_src,
+            "pk_att": pk_att,
+            "pk_scored": pk_scored,
+            "g_minus_npxg": round(goals - npxg, 2) if npxg is not None else None,
         }
     return _cache_set(key, out)
 
@@ -533,6 +585,26 @@ def build_analysis(st: dict, home_row: dict | None, away_row: dict | None,
     hop, aop = (opta.get(hid) if hid else None), (opta.get(aid) if aid else None)
     him, aim = (iyms.get(hid) if hid else None), (iyms.get(aid) if aid else None)
 
+    npx_h = npx_a = npx_tot = None
+    npx_src = None
+    if hop or aop:
+        h_for = (hop or {}).get("npxg_pg")
+        a_for = (aop or {}).get("npxg_pg")
+        h_ag = (hop or {}).get("npxga_pg")
+        a_ag = (aop or {}).get("npxga_pg")
+        if h_for is not None and a_ag is not None:
+            npx_h = round(0.55 * h_for + 0.45 * a_ag, 2)
+        elif h_for is not None:
+            npx_h = round(h_for, 2)
+        if a_for is not None and h_ag is not None:
+            npx_a = round(0.55 * a_for + 0.45 * h_ag, 2)
+        elif a_for is not None:
+            npx_a = round(a_for, 2)
+        if npx_h is not None and npx_a is not None:
+            npx_tot = round(npx_h + npx_a, 2)
+        srcs = [(hop or {}).get("npxg_src"), (aop or {}).get("npxg_src")]
+        npx_src = "opta" if "opta" in srcs else (srcs[0] or srcs[1])
+
     gap = None
     if hr and ar:
         gap = hr["pts"] - ar["pts"]
@@ -557,6 +629,14 @@ def build_analysis(st: dict, home_row: dict | None, away_row: dict | None,
             flags.append("iki taraf da şutlu")
         if (hop.get("clean_sheets") or 0) >= 3 and (aop.get("sot_pg") or 0) < 3:
             flags.append("ev kalesi sağlam / dep az isabet")
+    if npx_tot is not None and npx_tot >= 3.0:
+        flags.append(f"npxG tempo yüksek ({npx_tot})")
+    elif npx_tot is not None and npx_tot <= 2.05:
+        flags.append(f"npxG tempo düşük ({npx_tot})")
+    if hop and hop.get("g_minus_npxg") is not None and hop["g_minus_npxg"] >= 4:
+        flags.append("ev gol > npxG (bitiriyor)")
+    if hop and hop.get("g_minus_npxg") is not None and hop["g_minus_npxg"] <= -4:
+        flags.append("ev gol < npxG (kaçırıyor)")
 
     return {
         "league_goals_pg": round(league_goals_pg, 2) if league_goals_pg else None,
@@ -578,6 +658,10 @@ def build_analysis(st: dict, home_row: dict | None, away_row: dict | None,
         "h2h": h2h[:5],
         "home_opta": hop,
         "away_opta": aop,
+        "npxg_home": npx_h,
+        "npxg_away": npx_a,
+        "npxg_total": npx_tot,
+        "npxg_src": npx_src,
         "home_iyms": him,
         "away_iyms": aim,
         "flags": flags,
@@ -594,6 +678,8 @@ def analysis_lines(pack: dict) -> list[str]:
         bits.append(f"lig ort {a['league_goals_pg']} gol/maç")
     if a.get("exp_total") is not None:
         bits.append(f"eşleşme λ {a['exp_home']}+{a['exp_away']}={a['exp_total']}")
+    if a.get("npxg_total") is not None:
+        bits.append(f"npxG {a['npxg_home']}+{a['npxg_away']}={a['npxg_total']} ({a.get('npxg_src') or 'proxy'})")
     if a.get("pts_gap") is not None:
         bits.append(f"puan farkı {a['pts_gap']:+d}")
     if bits:
@@ -843,6 +929,8 @@ def score_open_picks(q: dict, stats_obj: dict | None, lh: dict | None, pack: dic
     combo_kg = an.get("combo_kg")
     exp_tot = an.get("exp_total")
     exp_h, exp_a = an.get("exp_home"), an.get("exp_away")
+    npx_tot = an.get("npxg_total")
+    npx_h, npx_a = an.get("npxg_home"), an.get("npxg_away")
 
     def implied(o):
         try:
@@ -873,6 +961,9 @@ def score_open_picks(q: dict, stats_obj: dict | None, lh: dict | None, pack: dic
             if exp_tot is not None:
                 stand_boost += (exp_tot - 2.55) * 4
                 stand_note += f" · λ {exp_tot}"
+            if npx_tot is not None:
+                stand_boost += (npx_tot - 2.50) * 5
+                stand_note += f" · npxG {npx_tot}"
         elif key == "u25":
             avg = combo_o25
             if avg is None:
@@ -884,6 +975,9 @@ def score_open_picks(q: dict, stats_obj: dict | None, lh: dict | None, pack: dic
             if exp_tot is not None:
                 stand_boost += (2.55 - exp_tot) * 4
                 stand_note += f" · λ {exp_tot}"
+            if npx_tot is not None:
+                stand_boost += (2.50 - npx_tot) * 5
+                stand_note += f" · npxG {npx_tot}"
         elif key == "o35":
             if exp_tot is not None:
                 stand_boost = (exp_tot - 3.15) * 8
@@ -914,9 +1008,21 @@ def score_open_picks(q: dict, stats_obj: dict | None, lh: dict | None, pack: dic
         elif key == "h" and exp_h is not None and exp_a is not None:
             stand_boost = (exp_h - exp_a) * 6
             stand_note = f"λ ev {exp_h} / dep {exp_a}"
+            if npx_h is not None and npx_a is not None:
+                stand_boost += (npx_h - npx_a) * 7
+                stand_note += f" · npxG {npx_h}/{npx_a}"
         elif key == "a" and exp_h is not None and exp_a is not None:
             stand_boost = (exp_a - exp_h) * 6
             stand_note = f"λ ev {exp_h} / dep {exp_a}"
+            if npx_h is not None and npx_a is not None:
+                stand_boost += (npx_a - npx_h) * 7
+                stand_note += f" · npxG {npx_h}/{npx_a}"
+        elif key == "h" and npx_h is not None and npx_a is not None:
+            stand_boost = (npx_h - npx_a) * 8
+            stand_note = f"npxG ev {npx_h} / dep {npx_a}"
+        elif key == "a" and npx_h is not None and npx_a is not None:
+            stand_boost = (npx_a - npx_h) * 8
+            stand_note = f"npxG ev {npx_h} / dep {npx_a}"
 
         p_use = None
         if isinstance(hist, (int, float)) and isinstance(model_p, (int, float)):

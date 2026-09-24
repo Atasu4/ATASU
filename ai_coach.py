@@ -46,6 +46,10 @@ def compose(brief: dict | None = None, standing: dict | None = None) -> dict:
         bullets.append(f"Tablo λ toplam {an.get('exp_total')} · ev {an.get('exp_home')} / dep {an.get('exp_away')}.")
     if an.get("combo_o25") is not None:
         bullets.append(f"Form 2.5Ü %{an['combo_o25']:.0f}.")
+    if an.get("npxg_total") is not None:
+        bullets.append(
+            f"npxG ev {an.get('npxg_home')} / dep {an.get('npxg_away')} toplam {an.get('npxg_total')} ({an.get('npxg_src') or 'proxy'})."
+        )
 
     al = [e for e in edges if e.get("signal") == "AL"]
     pahali = [e for e in edges if e.get("signal") == "PAHALI"]

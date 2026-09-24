@@ -397,8 +397,12 @@ async function analyzeText(text, title){
     let extra = '';
     if(an.exp_total!=null) extra += 'λ ev '+an.exp_home+' / dep '+an.exp_away+' = '+an.exp_total+'\n';
     if(an.combo_o25!=null) extra += 'taraf 2.5Ü %'+an.combo_o25+(an.combo_kg!=null?' · taraf KG %'+an.combo_kg:'')+'\n';
-    if(an.home_opta) extra += 'ev şut '+an.home_opta.shots_pg+' isabet '+an.home_opta.sot_pg+' TSO %'+an.home_opta.possession+' CS '+an.home_opta.clean_sheets+'\n';
-    if(an.away_opta) extra += 'dep şut '+an.away_opta.shots_pg+' isabet '+an.away_opta.sot_pg+' TSO %'+an.away_opta.possession+' CS '+an.away_opta.clean_sheets+'\n';
+    if(an.npxg_total!=null) extra += 'npxG ev '+an.npxg_home+' / dep '+an.npxg_away+' = '+an.npxg_total+' ('+(an.npxg_src||'proxy')+')
+';
+    if(an.home_opta) extra += 'ev sut '+an.home_opta.shots_pg+' isabet '+an.home_opta.sot_pg+' npxG/m '+(an.home_opta.npxg_pg!=null?an.home_opta.npxg_pg:'—')+' TSO %'+an.home_opta.possession+' CS '+an.home_opta.clean_sheets+'
+';
+    if(an.away_opta) extra += 'dep sut '+an.away_opta.shots_pg+' isabet '+an.away_opta.sot_pg+' npxG/m '+(an.away_opta.npxg_pg!=null?an.away_opta.npxg_pg:'—')+' TSO %'+an.away_opta.possession+' CS '+an.away_opta.clean_sheets+'
+';
     if(an.flags&&an.flags.length) extra += 'okuma: '+an.flags.join(' · ');
     det += '<p class="yorum">'+esc(rowLine(st.home_row,'Ev'))+'\n'+esc(rowLine(st.away_row,'Dep'))+(extra?'\n'+esc(extra.trim()):'')+'</p></div>';
   } else if(st.note){

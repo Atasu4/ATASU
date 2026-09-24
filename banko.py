@@ -55,6 +55,8 @@ def evaluate(pick: dict, n_hist: int, standing=None, lh=None, stats_obj=None) ->
             taraf = False
         if lam is not None and lam < 2.45:
             taraf = False
+        if an.get("npxg_total") is not None and an["npxg_total"] < 2.40:
+            taraf = False
     elif key == "u25":
         combo = an.get("combo_o25")
         lam = an.get("exp_total")
@@ -62,17 +64,28 @@ def evaluate(pick: dict, n_hist: int, standing=None, lh=None, stats_obj=None) ->
             taraf = False
         if lam is not None and lam > 2.55:
             taraf = False
+        if an.get("npxg_total") is not None and an["npxg_total"] > 2.60:
+            taraf = False
     elif key == "h":
         eh, ea = an.get("exp_home"), an.get("exp_away")
         if eh is not None and ea is not None and eh < ea + 0.15:
+            taraf = False
+        nph, npa = an.get("npxg_home"), an.get("npxg_away")
+        if nph is not None and npa is not None and nph < npa + 0.12:
             taraf = False
     elif key == "a":
         eh, ea = an.get("exp_home"), an.get("exp_away")
         if eh is not None and ea is not None and ea < eh + 0.15:
             taraf = False
+        nph, npa = an.get("npxg_home"), an.get("npxg_away")
+        if nph is not None and npa is not None and npa < nph + 0.12:
+            taraf = False
     elif key == "btts":
         ck = an.get("combo_kg")
         if ck is not None and ck < 55:
+            taraf = False
+        nph, npa = an.get("npxg_home"), an.get("npxg_away")
+        if nph is not None and npa is not None and (nph < 0.95 or npa < 0.90):
             taraf = False
     checks["taraf_uyum"] = taraf
 

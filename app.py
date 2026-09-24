@@ -454,6 +454,10 @@ def consensus_lambda(q, stats_obj=None, standing=None):
     if an.get("exp_home") and an.get("exp_away"):
         cands_h.append((float(an["exp_home"]), 1.3))
         cands_a.append((float(an["exp_away"]), 1.3))
+    if an.get("npxg_home") and an.get("npxg_away"):
+        w = 1.5 if an.get("npxg_src") == "opta" else 1.15
+        cands_h.append((float(an["npxg_home"]), w))
+        cands_a.append((float(an["npxg_away"]), w))
     hf, af = extra.get("home_form") or {}, extra.get("away_form") or {}
     if hf.get("gf_pg") is not None and af.get("gf_pg") is not None:
         # ev gol atışı ev sahada, dep gol atışı dışarıda — kaba

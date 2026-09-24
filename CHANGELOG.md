@@ -1,3 +1,8 @@
+# ATASU 5.5.1
+
+- Opta npxG resmi alan veya SoT/sut proxy
+- Tercih / banko / coach / pipeline / Detay baglandi
+
 # ATASU 5.5.0
 
 - Tercih: Wilson alt bant (%52), kupon 1.30–2.20, MS1 / 2.5Ü / KG öncelik
