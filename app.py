@@ -8,6 +8,8 @@ from html import unescape
 from pathlib import Path
 from collections import Counter
 import json, re, os, time
+from threading import Lock
+from datetime import datetime, timezone
 
 ROOT = Path(__file__).parent
 HISTORY_FILE = ROOT / "data" / "history.json"
@@ -77,7 +79,8 @@ def _standing(home, away="", league=""):
     return pack
 
 
-app = FastAPI(title="ATASU Intelligence", version="5.4.0")
+APP_VERSION = "6.0.0"
+app = FastAPI(title="ATASU Intelligence", version=APP_VERSION)
 WEIGHTS = {
     "h": 1.2, "d": 1.0, "a": 1.2,
     "u25": 1.1, "o25": 1.1,
@@ -1089,6 +1092,42 @@ def empirical_banko(q):
     }
 
 
+PREDICTIONS_FILE = ROOT / "data" / "predictions.json"
+_PRED_LOCK = Lock()
+
+def _predictions():
+    try: return json.loads(PREDICTIONS_FILE.read_text(encoding="utf-8")) if PREDICTIONS_FILE.exists() else []
+    except Exception: return []
+
+def _write_predictions(rows):
+    PREDICTIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    PREDICTIONS_FILE.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+
+def signal_engine_v6(stats_obj, sample, odds, lh=None, standing=None, bw=None):
+    dc=((lh or {}).get("dixon_coles") or {}); an=((standing or {}).get("analysis") or {})
+    overlay={x.get("key"):x for x in ((bw or {}).get("overlay") or [])}; out=[]
+    spec=[("o25","2,5 Üst","2,5 Üst","p_o25","combo_o25"),("btts","KG Var","KG Var","p_btts","combo_kg"),("h","MS 1","MS 1","ms1",None),("a","MS 2","MS 2","ms2",None),("u35","3,5 Alt","3,5 Alt",None,None)]
+    for key,label,hname,dkey,skey in spec:
+        if not odds.get(key): continue
+        vals=[]
+        for source,val,w in [("geçmiş",stats_obj.get(hname),35),("Dixon-Coles",dc.get(dkey) if dkey else None,30),("takım/lig",an.get(skey) if skey else None,20),("exchange",(overlay.get(key) or {}).get("money_pct"),15)]:
+            if isinstance(val,(int,float)): vals.append((source,float(val),w))
+        base=sum(v*w for _,v,w in vals)/sum(w for _,_,w in vals) if vals else 0
+        confidence=round(base*(min(1,max(.45,sample/40)) if sample else .45),1)
+        edge=round(confidence-100/float(odds[key]),1)
+        grade="GÜÇLÜ" if confidence>=82 and edge>=6 and sample>=30 else ("İZLE" if confidence>=70 and edge>=3 else "PAS")
+        out.append({"key":key,"selection":label,"score":confidence,"edge_points":edge,"grade":grade,"sample":sample,"evidence":[{"source":a,"value":b,"weight":c} for a,b,c in vals]})
+    out.sort(key=lambda x:(x["grade"]=="GÜÇLÜ",x["score"]),reverse=True)
+    return {"version":APP_VERSION,"top":out[0] if out else None,"signals":out,"note":"Veri uyum puanıdır; kesinlik veya sonuç garantisi değildir."}
+
+def _record_prediction(title, top):
+    if not top or top.get("grade")=="PAS": return None
+    rows=_predictions(); row={"id":str(time.time_ns()),"created_at":datetime.now(timezone.utc).isoformat(timespec="seconds"),"match":title,"selection":top.get("selection"),"key":top.get("key"),"confidence":top.get("score"),"result":None,"profit_units":None}; rows.append(row); _write_predictions(rows[-5000:]); return row
+
+def performance_summary():
+    rows=_predictions(); done=[r for r in rows if r.get("result") in (True,False)]; wins=sum(r.get("result") is True for r in done); profit=sum(float(r.get("profit_units") or 0) for r in done)
+    return {"total_predictions":len(rows),"settled":len(done),"wins":wins,"losses":len(done)-wins,"hit_rate":round(100*wins/len(done),1) if done else None,"profit_units":round(profit,2),"roi_percent":round(100*profit/len(done),1) if done else None,"recent":list(reversed(rows[-100:]))}
+
 class OddsReq(BaseModel):
     odds: dict[str, float | None]
     tolerance: float = Field(0.05, ge=0, le=5)
@@ -1112,7 +1151,7 @@ def meta():
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "markets": MARKETS,
-        "version": "5.2.3",
+        "version": APP_VERSION,
         "warning": HISTORY_WARNING,
         "rule": "Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır. Puan durumu Maçkolik arşivinden çekilir.",
     }
@@ -1383,7 +1422,7 @@ def from_mac(req: MacIdReq):
 def selftest():
     return {
         "ok": True,
-        "version": "5.2.3",
+        "version": APP_VERSION,
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "endpoints": ["/api/match-link", "/api/odds", "/api/exact-odds", "/api/plus6", "/api/betwatch"],
@@ -2156,6 +2195,8 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
     bw = betwatch_find(match_title, q=q)
     bw["signals"] = money_signals(s, bw.get("overlay"), q)
     lh = lh_style_engine(q, s)
+    signal_v6 = signal_engine_v6(s, n, q, lh, standing, bw)
+    prediction_record = _record_prediction(match_title, signal_v6.get("top"))
     yorum = compact_yorum(
         s, matches, title=match_title or title, league=league, q=q, bw=bw, p6=p6, lh=lh, standing=standing,
     )
@@ -2176,6 +2217,9 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
         "standing": standing,
         "open_markets": [{"key": k, "name": n, "odds": o} for k, n, o in open_markets(q)],
         "open_picks": open_rank,
+        "signal_v6": signal_v6,
+        "prediction_record": prediction_record,
+        "performance": performance_summary(),
     }
 
 
@@ -2313,7 +2357,7 @@ def api_update():
 def api_update_status():
     st = _load_state()
     return {
-        "version": "5.2.3",
+        "version": APP_VERSION,
         "history_n": len(HISTORY),
         "last": st.get("last"),
         "added_total": st.get("added"),
@@ -2321,3 +2365,37 @@ def api_update_status():
         "note": "Kod kendini yazmaz. POST /api/update canlı cache + history hasadı yapar.",
     }
 
+
+
+class MultiBriefReq(BaseModel):
+    matches: list[OddsReq]
+
+@app.post("/api/multi-brief")
+def multi_brief(req: MultiBriefReq):
+    if not 1 <= len(req.matches) <= 50: raise HTTPException(400,"1-50 maç gönder.")
+    rows=[]
+    for item in req.matches:
+        q={k:float(v) for k,v in item.odds.items() if k in MARKETS and v is not None and float(v)>1}
+        if len(q)<2: rows.append({"title":item.title,"error":"En az 2 oran lazım."}); continue
+        r=brief_from_odds(q,item.tolerance,item.league,item.limit,item.title); rows.append({"title":item.title,"sample":r.get("sample"),"signal_v6":r.get("signal_v6"),"stats":r.get("stats")})
+    rows.sort(key=lambda x:((((x.get("signal_v6") or {}).get("top") or {}).get("score")) or 0),reverse=True)
+    return {"count":len(rows),"matches":rows}
+
+@app.get("/api/performance")
+def performance_api(): return performance_summary()
+
+class SettleReq(BaseModel):
+    prediction_id: str
+    won: bool
+    odds: float = Field(...,gt=1,le=100)
+
+@app.post("/api/performance/settle")
+def settle_prediction(req:SettleReq):
+    with _PRED_LOCK:
+        rows=_predictions(); found=None
+        for r in rows:
+            if r.get("id")==req.prediction_id:
+                r["result"]=req.won; r["profit_units"]=round(req.odds-1,3) if req.won else -1.0; r["settled_at"]=datetime.now(timezone.utc).isoformat(timespec="seconds"); found=r; break
+        if not found: raise HTTPException(404,"Tahmin bulunamadı")
+        _write_predictions(rows)
+    return {"ok":True,"prediction":found,"performance":performance_summary()}
