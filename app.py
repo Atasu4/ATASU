@@ -11,12 +11,23 @@ import json, re, os, time
 
 ROOT = Path(__file__).parent
 HISTORY_FILE = ROOT / "data" / "history.json"
+if not HISTORY_FILE.exists() and (ROOT / "history.json").exists():
+    HISTORY_FILE = ROOT / "history.json"
 HISTORY = []
 HISTORY_WARNING = None
-if HISTORY_FILE.exists():
-    HISTORY = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
-else:
-    HISTORY_WARNING = "data/history.json yok. Motorlar boş havuzla açıldı."
+try:
+    if HISTORY_FILE.exists():
+        HISTORY = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+        if not isinstance(HISTORY, list):
+            HISTORY = (HISTORY.get("matches") or HISTORY.get("history") or []) if isinstance(HISTORY, dict) else []
+            if not isinstance(HISTORY, list):
+                HISTORY = []
+                HISTORY_WARNING = "history.json liste değil."
+    else:
+        HISTORY_WARNING = "data/history.json yok. Motorlar boş havuzla açıldı."
+except Exception as e:
+    HISTORY = []
+    HISTORY_WARNING = "history okunamadı: " + str(e)[:80]
 
 MARKETS = ["h", "d", "a", "u25", "o25", "btts", "nobtts", "u35", "o35", "iyu15", "iyo15", "g6", "g45", "g01", "g23"]
 NAMES = {

@@ -1,4 +1,4 @@
 #!/bin/bash
 cd "$(dirname "$0")"
-exec uvicorn app:app --host 0.0.0.0 --port 8000
-
+PORT="${PORT:-8000}"
+exec uvicorn app:app --host 0.0.0.0 --port "$PORT"

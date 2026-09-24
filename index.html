@@ -207,9 +207,21 @@ function showTab(id){
 document.querySelectorAll('.tab').forEach(btn=>{
   btn.onclick=()=>showTab(btn.dataset.t);
 });
-fetch('/api/meta').then(r=>r.json()).then(m=>{
-  $('metaLine').textContent = m.history_rows + ' kayıt · ' + m.completed_rows + ' sonuçlu · v' + m.version + (m.warning? ' · '+m.warning:'');
-}).catch(()=>{$('metaLine').textContent='API yok — uvicorn app:app --port 8000';});
+(function loadMeta(){
+  const ctl = new AbortController();
+  const t = setTimeout(()=>ctl.abort(), 12000);
+  fetch('/api/meta', {signal: ctl.signal}).then(r=>{
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(m=>{
+    $('metaLine').textContent = (m.history_rows||0) + ' kayıt · ' + (m.completed_rows||0) + ' sonuçlu · v' + (m.version||'?') + (m.warning? ' · '+m.warning:'');
+  }).catch(err=>{
+    const asleep = String(err.name||err)==='AbortError';
+    $('metaLine').textContent = asleep
+      ? 'Sunucu uyanmıyor (Render uyku). 30 sn bekleyip yenile.'
+      : 'API yok — Render log / uvicorn PORT';
+  }).finally(()=>clearTimeout(t));
+})();
 
 function parseBulletin(text){
   const t = (text||'').replace(/\u00a0/g,' ').replace(/[–—]/g,'-');
