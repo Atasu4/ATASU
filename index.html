@@ -170,7 +170,11 @@ tr:hover td{background:rgba(228,201,138,.04)}
     <p class="mu">2,5Ü 1.20–1.28 · 3,5Ü 1.66–1.89 · 4,5Ü 2.64–3.14 · KG Var 1.22–1.87</p>
     <div id="outP6" class="mu">Aynı linkten dolar.</div>
   </section>
-  <section id="panel-performans" class="card hidden"><p class="kicker">Model doğrulama</p><div class="btns"><button class="b" onclick="loadPerformance()">Yenile</button></div><div id="outPerformans" class="mu">Yükleniyor…</div></section>
+  <section id="panel-performans" class="card hidden"><p class="kicker">SQLite performans · tahmin gezgini</p>
+  <div class="row"><div><label>Durum</label><input id="pfStatus" placeholder="open / won / lost"></div><div><label>Piyasa</label><input id="pfMarket" placeholder="o25 / btts / h"></div></div>
+  <div class="row"><div><label>Arama</label><input id="pfQuery" placeholder="Takım veya seçim"></div><div><label>Model sürümü</label><input id="pfVersion" placeholder="7.1.0"></div></div>
+  <div class="btns"><button class="g" onclick="loadPerformance()">Yenile</button><button class="b" onclick="autoSettle()">Sonuçları kapat</button></div>
+  <div id="outPerformans" class="mu"></div></section>
   </main>
 </div>
 <script>
@@ -364,7 +368,6 @@ async function analyzeText(text, title){
   html += '<div class="v-title">'+esc(title||'Maç')+'</div>';
   html += '<p class="v-sub">'+esc(brief.text||brief.title||'')+'</p></div>';
   html += '<p class="hint">Kutular benzer maç yüzdesi. 0 ise model/tablo konuşur; birebir oran aranmaz.</p>';
-  const sig=(brief.signal_v6||{}).top; if(sig) html += '<div class="tercih"><div class="kicker">Signal Engine v6 · '+esc(sig.grade)+'</div><p>'+esc(sig.selection)+' · '+sig.score+'/100 · edge '+sig.edge_points+' · n='+sig.sample+'</p></div>';
   html += '<div class="kpi">';
   html += '<div class="k"><span>Eşleşen maç</span><b>'+(brief.matched||0)+'</b></div>';
   html += '<div class="k"><span>2,5 üst geldi</span><b>'+(s['2,5 Üst']!=null?s['2,5 Üst']+'%':'—')+'</b></div>';
@@ -459,7 +462,8 @@ async function pingUpdate(){
     if(h && j.last) h.textContent = 'Son otomatik hasat: '+j.last+' · havuz '+j.history_n;
   }catch(_){}
 }
-async function loadPerformance(){const b=$('outPerformans');try{const r=await fetch('/api/performance'),j=await r.json();let x='<div class="kpi"><div class="k"><span>Tahmin</span><b>'+j.total_predictions+'</b></div><div class="k"><span>Sonuçlanan</span><b>'+j.settled+'</b></div><div class="k"><span>İsabet</span><b>'+(j.hit_rate==null?'—':j.hit_rate+'%')+'</b></div><div class="k"><span>ROI</span><b>'+(j.roi_percent==null?'—':j.roi_percent+'%')+'</b></div></div><p class="hint">1 birimlik kapatılmış kayıtlar. Geçmiş performans garanti değildir.</p><div class="scroll"><table><tr><th>Tarih</th><th>Maç</th><th>Seçim</th><th>Puan</th><th>Sonuç</th></tr>';(j.recent||[]).slice(0,40).forEach(p=>x+='<tr><td>'+esc(p.created_at||'')+'</td><td>'+esc(p.match||'')+'</td><td>'+esc(p.selection||'')+'</td><td>'+(p.confidence??'—')+'</td><td>'+(p.result===true?'Kazandı':p.result===false?'Kaybetti':'Açık')+'</td></tr>');b.innerHTML=x+'</table></div>'}catch(e){b.innerHTML='<p class="no">'+esc(e.message||e)+'</p>'}}
+async function autoSettle(){await fetch('/api/performance/auto-settle',{method:'POST'});loadPerformance()}
+async function loadPerformance(){const b=$('outPerformans');b.innerHTML='<p class="mu">Yükleniyor…</p>';try{const q=new URLSearchParams({status:$('pfStatus').value,market:$('pfMarket').value,query:$('pfQuery').value,model_version:$('pfVersion').value,limit:'100'});const [pr,lr,mr]=await Promise.all([fetch('/api/performance'),fetch('/api/predictions?'+q),fetch('/api/model-comparison')]);const p=await pr.json(),l=await lr.json(),m=await mr.json();let x='<div class="kpi"><div class="k"><span>Tahmin</span><b>'+p.total_predictions+'</b></div><div class="k"><span>Sonuçlanan</span><b>'+p.settled+'</b></div><div class="k"><span>İsabet</span><b>'+(p.hit_rate==null?'—':p.hit_rate+'%')+'</b></div><div class="k"><span>ROI</span><b>'+(p.roi_percent==null?'—':p.roi_percent+'%')+'</b></div></div>';x+='<p class="hint">Filtrelenen '+l.total+' kayıt · model karşılaştırması '+(m.models||[]).map(z=>z.model_version+': '+(z.hit_rate??'—')+'%').join(' · ')+'</p><div class="scroll"><table><tr><th>ID</th><th>Tarih</th><th>Maç</th><th>Seçim</th><th>Oran</th><th>Durum</th><th>Model</th></tr>';(l.items||[]).forEach(r=>x+='<tr><td>'+r.id+'</td><td>'+esc(r.created_at||'')+'</td><td>'+esc(r.match_title||'')+'</td><td>'+esc(r.selection||'')+'</td><td>'+r.odds+'</td><td>'+esc(r.status)+'</td><td>'+esc(r.model_version)+'</td></tr>');b.innerHTML=x+'</table></div>'}catch(e){b.innerHTML='<p class="no">'+esc(e.message||e)+'</p>'}}
 pingUpdate();
 loadPerformance();
 setInterval(runUpdate, 15*60*1000);

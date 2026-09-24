@@ -13,7 +13,7 @@ HISTORY_FILE = ROOT / "data" / "history.json"
 STATE_FILE = ROOT / "data" / "update_state.json"
 
 # Sık kullanılan ligler — Tara sonrası season_id state'e eklenir
-UPDATER_VERSION = "6.0.0"
+UPDATER_VERSION = "7.1.0"
 DEFAULT_SEASONS = [73482]  # Süper Lig güncel
 
 
