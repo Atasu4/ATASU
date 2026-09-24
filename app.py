@@ -48,6 +48,10 @@ from extra_feeds import lookup as fd_lookup
 from pipeline import build_pipeline, lines_from_pipeline
 from banko import evaluate as banko_evaluate, lines as banko_lines
 try:
+    from mackolik_news import collect as news_collect
+except Exception:
+    news_collect = None
+try:
     from ai_coach import compose as coach_compose
 except Exception:
     coach_compose = None
@@ -86,6 +90,11 @@ def _standing(home, away="", league=""):
             bits.append(f"fd form 2.5Ü %{extra['combo_o25']}")
         if bits:
             flags.append(" · ".join(bits))
+    if news_collect:
+        try:
+            pack["news"] = news_collect(home or "", away or "", pack)
+        except Exception as e:
+            pack["news"] = {"ok": False, "note": str(e)[:80]}
     return pack
 
 
@@ -1858,6 +1867,9 @@ def narrative_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, l
     if an.get("flags"):
         ac.append(", ".join(an["flags"]))
     p1.append("Maç: " + "; ".join(ac) + ".")
+    nw = (standing or {}).get("news") or {}
+    if nw.get("ok") and nw.get("lines"):
+        p1.append("Haber: " + " | ".join(nw["lines"][:2]) + ".")
 
     # 2. İddaa fiyatı vs okuma
     p2 = []
