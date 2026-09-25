@@ -1186,6 +1186,23 @@ def root():
     raise HTTPException(404, "index.html yok")
 
 
+@app.get("/indir")
+def indir_zip():
+    candidates = [
+        ROOT / "ATASU.zip",
+        Path("/workspace/artifacts/ATASU_5.6.1.zip"),
+    ]
+    p = next((c for c in candidates if c.exists()), None)
+    if p is None:
+        raise HTTPException(404, "Zip yok")
+    return FileResponse(
+        p,
+        media_type="application/zip",
+        filename="ATASU_5.6.1.zip",
+        content_disposition_type="attachment",
+    )
+
+
 @app.get("/api/meta")
 def meta():
     return {
