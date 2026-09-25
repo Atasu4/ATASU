@@ -728,7 +728,7 @@ function parseMatches(raw){
   const matches = [];
   let current = null, currentMarket = null, pendingLabel = null;
   const isValue = (l)=> l==='-' || /^-?\d+[.,]\d+$/.test(l);
-  const headerRe = /^(.+\D)(\d{3,6})$/;
+  const headerRe = /^(.+\D)(\d{3,8})$/;
   for(const line of lines){
     if(isValue(line)){
       if(current && currentMarket && pendingLabel!==null){
@@ -756,6 +756,24 @@ function parseMatches(raw){
       continue;
     }
     pendingLabel = line;
+  }
+  if(matches.length===0){
+    const m = {code:'bulten', name:'bülten', markets:{}};
+    const compact = raw.replace(/\u00a0/g,' ');
+    const add = (market, pairs)=>{
+      m.markets[market] = m.markets[market] || {};
+      pairs.forEach(([k,v])=>{ if(v) m.markets[market][k]=v; });
+    };
+    let mm;
+    mm = compact.match(/Ma[cç]\s*Sonucu[^\d]*?(\d+[.,]\d+)\s+(\d+[.,]\d+)\s+(\d+[.,]\d+)/i);
+    if(mm) add('Maç Sonucu',[['1',mm[1]],['X',mm[2]],['2',mm[3]]]);
+    mm = compact.match(/2\s*[,.]?\s*5\s*Alt\s*\/\s*Üst\s+(\d+[.,]\d+)\s+(\d+[.,]\d+)/i);
+    if(mm) add('2,5 Alt/Üst',[['Alt',mm[1]],['Üst',mm[2]]]);
+    mm = compact.match(/3\s*[,.]?\s*5\s*Alt\s*\/\s*Üst\s+(\d+[.,]\d+)\s+(\d+[.,]\d+)/i);
+    if(mm) add('3,5 Alt/Üst',[['Alt',mm[1]],['Üst',mm[2]]]);
+    mm = compact.match(/Kar[sş][iı]l[iı]kl[iı]\s*Gol[^\n]*?Var\s+(\d+[.,]\d+)/i);
+    if(mm) add('Karşılıklı Gol',[['Var',mm[1]]]);
+    if(Object.keys(m.markets).length) matches.push(m);
   }
   return matches;
 }
