@@ -28,6 +28,8 @@ try:
 except Exception as e:
     HISTORY = []
     HISTORY_WARNING = "history okunamadı: " + str(e)[:80]
+if not HISTORY_WARNING and not HISTORY:
+    HISTORY_WARNING = "history.json boş. POST /api/update veya football-data hasadı çalıştır."
 
 MARKETS = ["h", "d", "a", "u25", "o25", "btts", "nobtts", "u35", "o35", "iyu15", "iyo15", "g6", "g45", "g01", "g23"]
 NAMES = {
@@ -1232,7 +1234,14 @@ def _parse_program_rows(raw: str):
             j = i - 8
             return parts[j] if 0 <= j < len(parts) else ""
 
-        league = next((p for p in parts if re.fullmatch(r"[A-ZÇĞİÖŞÜ0-9]{2,8}", p or "")), "")
+        league = ""
+        for p in parts:
+            s = (p or "").strip()
+            if not s or s.isdigit() or re.match(r"^\d+[.,]\d+$", s):
+                continue
+            if re.fullmatch(r"[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ0-9\-]{1,7}", s):
+                league = s
+                break
         h, d, a = _odd(at(16)), _odd(at(17)), _odd(at(18))
         u25, o25 = _odd(at(22)), _odd(at(23))
         code = at(28)
@@ -1487,7 +1496,7 @@ def from_mac(req: MacIdReq):
 def selftest():
     return {
         "ok": True,
-        "version": "5.5.0",
+        "version": "5.6.0",
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "endpoints": ["/api/match-link", "/api/odds", "/api/exact-odds", "/api/plus6", "/api/betwatch"],
