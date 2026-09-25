@@ -448,13 +448,60 @@ async function pickBulletin(m){
     showTab('model');
   }
 }
+function parseScore(v){
+  const m = String(v||'').match(/^\s*(\d+)\s*-\s*(\d+)\s*$/);
+  return m ? [Number(m[1]), Number(m[2])] : null;
+}
+function scoreSummary(rows, s){
+  rows = rows||[];
+  const ft = {}, ht = {}, iyms = {};
+  let n=0, nh=0, ev=0, x=0, dep=0, o25=0, o35=0, kg=0;
+  rows.forEach(r=>{
+    const a = parseScore(r.ft);
+    if(!a) return;
+    n++;
+    const key = a[0]+'-'+a[1];
+    ft[key]=(ft[key]||0)+1;
+    if(a[0]>a[1]) ev++; else if(a[0]===a[1]) x++; else dep++;
+    const t=a[0]+a[1];
+    if(t>=3) o25++;
+    if(t>=4) o35++;
+    if(a[0]>0 && a[1]>0) kg++;
+    const h = parseScore(r.ht);
+    if(h){
+      nh++;
+      const hk = h[0]+'-'+h[1];
+      ht[hk]=(ht[hk]||0)+1;
+      const lab = (h[0]>h[1]?'1':h[0]===h[1]?'X':'2')+'/'+(a[0]>a[1]?'1':a[0]===a[1]?'X':'2');
+      iyms[lab]=(iyms[lab]||0)+1;
+    }
+  });
+  if(!n && s && s.top_scores && s.top_scores.length){
+    n = s.sample_ft||0;
+    (s.top_scores||[]).forEach(t=>{ ft[t.score]=t.count; });
+  }
+  if(!n) return '<p class="mu">Skor özeti yok.</p>';
+  const rank = obj => Object.entries(obj).sort((a,b)=>b[1]-a[1]);
+  const line = (pairs, total) => pairs.slice(0,8).map(([k,c])=>k+' '+c+' ('+Math.round(100*c/total)+'%)').join(' · ');
+  const pct = (c)=> Math.round(100*c/n)+'%';
+  let html = '<div class="verdict go"><div class="kicker">Eşleşen skor özeti · n='+n+'</div>';
+  html += '<div class="v-title">'+esc(rank(ft).slice(0,3).map(x=>x[0]).join('  ·  ')||'—')+'</div>';
+  html += '<p class="v-sub">MS 1 '+pct(ev)+' · X '+pct(x)+' · 2 '+pct(dep)+' · 2.5Ü '+pct(o25)+' · 3.5Ü '+pct(o35)+' · KG '+pct(kg)+'</p>';
+  html += '<p class="yorum">MS skor: '+esc(line(rank(ft), n))+'</p>';
+  if(nh){
+    html += '<p class="yorum" style="margin-top:8px">İY skor: '+esc(line(rank(ht), nh))+'</p>';
+    html += '<p class="yorum" style="margin-top:8px">İY/MS: '+esc(line(rank(iyms), nh))+'</p>';
+  }
+  html += '</div>';
+  return html;
+}
 function tableMatches(rows){
-  if(!rows||!rows.length) return '<p class="mu">Bu oranlara uyan geçmiş maç yok.</p>';
+  if(!rows||!rows.length) return '';
   let body = '';
-  rows.slice(0,40).forEach(r=>{
+  rows.slice(0,8).forEach(r=>{
     body += '<tr><td>'+(r.date||'')+'</td><td>'+(r.league||'')+'</td><td>'+(r.home||'')+' — '+(r.away||'')+'</td><td>'+(r.ht||'—')+'</td><td>'+(r.ft||'—')+'</td></tr>';
   });
-  return '<table><tr><th>Tarih</th><th>Lig</th><th>Maç</th><th>İY</th><th>MS</th></tr>'+body+'</table>';
+  return '<p class="hint" style="margin-top:14px">Örnek 8 maç</p><table><tr><th>Tarih</th><th>Lig</th><th>Maç</th><th>İY</th><th>MS</th></tr>'+body+'</table>';
 }
 
 async function runAll(){
@@ -579,9 +626,8 @@ async function analyzeText(text, title){
   if(parts.yorum) det += '<p class="yorum" style="margin-top:14px">'+esc(parts.yorum)+'</p>';
   $('outDetay').innerHTML = det || '<p class="mu">Detay yok.</p>';
 
-  let ex = '<p class="yorum">'+esc(parts.yorum)+'</p>';
+  let ex = scoreSummary(brief.matches||[], brief.stats||{});
   if(parts.tercih) ex += '<div class="tercih"><div class="kicker">Tercih</div><p>'+esc(parts.tercih)+'</p></div>';
-  ex += '<p class="hint" style="margin-top:18px">Birebir aynı oran + benzer maç listesi</p>';
   (exact.categories||[]).forEach(c=>{
     ex += '<div class="mu">'+esc(c.category)+' · '+esc(c.status)+' · '+c.matched+'</div>';
   });
