@@ -133,7 +133,7 @@ tr:hover td{background:rgba(228,201,138,.04)}
     <div>
       <h1 class="word">ATA<span>SU</span> <i>Intelligence</i></h1>
       <div class="meta" id="metaLine">Yükleniyor</div>
-      <a class="b" href="/indir" download="ATASU_5.7.4.zip" style="display:inline-block;margin-top:10px;text-decoration:none">Zip indir</a>
+      <a class="b" href="/indir" download="ATASU_5.7.5.zip" style="display:inline-block;margin-top:10px;text-decoration:none">Zip indir</a>
     </div>
     <nav class="tabs">
       <button class="tab on" data-t="model">Rapor</button>
@@ -302,29 +302,21 @@ function localISO(){
 }
 async function loadBulletin(){
   const box = $('bulletinBox');
-  box.innerHTML = '<p class="mu">Bülten yükleniyor… Maçkolik programı çekiliyor.</p>';
+  box.innerHTML = '<p class="mu">Bugünün İddaa programı çekiliyor.</p>';
   showTab('bulten');
   try{
     const iso = localISO();
-    let r = await fetch('/api/bulletin?date='+iso);
-    let j = await r.json().catch(()=>({}));
-    if(!r.ok){
-      r = await fetch('/api/bulletin');
-      j = await r.json().catch(()=>({}));
-    }
-    if(!r.ok) throw new Error(j.detail || ('HTTP '+r.status+' — uvicorn çalışıyor mu?'));
-    let rows = j.matches||[];
+    const r = await fetch('/api/bulletin?date='+iso);
+    const j = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.detail || ('HTTP '+r.status));
+    const rows = j.matches||[];
     if(!rows.length){
-      const r2 = await fetch('/api/bulletin');
-      const j2 = await r2.json().catch(()=>({}));
-      rows = j2.matches||[];
-      j = j2;
+      box.innerHTML = '<p class="no">Bugün İddaa programında açık maç yok. ('+esc(j.date||iso)+')</p>';
+      return;
     }
-    if(!rows.length) throw new Error('İddaa programı boş. Biraz sonra tekrar dene.');
     renderBulletin(rows, j.date||iso);
   }catch(e){
-    const msg = String(e.message||e);
-    box.innerHTML = '<p class="no">Bülten yok: '+esc(msg)+'</p>';
+    box.innerHTML = '<p class="no">Bülten yok: '+esc(e.message||e)+'</p>';
   }
 }
 function renderBulletin(rows, label){
@@ -632,7 +624,7 @@ async function runFilterScan(){
       box.innerHTML = '<p class="no">Şablon oturmadı. Taranan '+ (j.scanned||0) +' / bülten '+(j.bulletin||0)+'.</p>';
       return;
     }
-    let html = '<p class="hint">'+j.n+' oturan · taranan '+j.scanned+' · bülten '+(j.bulletin||0)+' · '+esc(j.source||'')+'</p>';
+    let html = '<p class="hint">'+j.n+' şablon · bugün '+esc(j.source||'')+' · taranan '+(j.scanned||0)+'</p>';
     j.matches.forEach(m=>{
       const tags = (m.profiles||[]).map(p=>p.selection+' · '+p.name).join(' | ');
       const o = m.odds||{};
@@ -666,10 +658,10 @@ async function runDesk(){
     const j = await r.json();
     if(!r.ok) throw new Error(j.detail||'masa yok');
     if(!j.matches||!j.matches.length){
-      box.innerHTML = '<p class="no">Açık satır yok. Kaynak: '+esc(j.detail||'bülten boş')+'</p>';
+      box.innerHTML = '<p class="no">Bugünün İddaa bülteninde şablon oturmadı. ('+esc(j.source||'')+')</p>';
       return;
     }
-    let html = '<p class="hint">'+j.n+' maç · havuz '+j.history_n+'</p>';
+    let html = '<p class="hint">'+j.n+' maç · '+esc(j.source||'')+' · yalnız bugün</p>';
     j.matches.slice().sort((a,b)=>{
       const ta = String(a.kickoff||a.time||'99:99');
       const tb = String(b.kickoff||b.time||'99:99');

@@ -1187,35 +1187,30 @@ def _load_bulletin_rows():
 
 @app.get("/api/bulletin")
 def bulletin(date: str = "", include_played: bool = False):
-    """Yalnızca İddaa programı (MS 1/X/2 olan satırlar)."""
+    """Bugünün İddaa programı. date=all haftayı açar."""
     rows = _load_bulletin_rows()
-    want = ""
-    filtered = rows
-    if date.strip():
-        ds = date.strip()
+    today, iso = _istanbul_today()
+    ds = (date or "").strip().lower()
+    if ds in ("all", "hafta", "week"):
+        want = "hafta"
+        filtered = rows
+    else:
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", ds):
             y, mo, d = ds.split("-")
             want = f"{d}.{mo}.{y}"
-        else:
+        elif re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", ds):
             want = ds
+        else:
+            want = today
         filtered = [r for r in rows if r.get("date") == want]
-    if not filtered:
-        today, _iso = _istanbul_today()
-        want = today
-        filtered = [r for r in rows if r.get("date") == today]
-    if not filtered:
-        filtered = rows
-        want = "hafta"
-    if not include_played:
-        filtered = [r for r in filtered if r.get("h") and r.get("a")]
-    else:
-        filtered = [r for r in filtered if r.get("h") and r.get("a")]
+    filtered = [r for r in filtered if r.get("h") and r.get("a")]
     filtered = _sort_bulletin(filtered)
     return {
         "ok": True,
         "source": "İddaa programı",
         "count": len(filtered),
-        "date": want or "hafta",
+        "date": want,
+        "today": today,
         "sort": "saat",
         "matches": filtered[:500],
         "note": None,
