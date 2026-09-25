@@ -62,12 +62,12 @@ body{
 }
 .kicker{font:500 10px/1 "IBM Plex Mono",monospace;letter-spacing:.2em;text-transform:uppercase;color:var(--gold2);margin:0 0 16px}
 label{display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--fog);margin:14px 0 7px}
-textarea,input{
+textarea,input,select{
   width:100%;background:var(--void);border:1px solid var(--line);color:var(--snow);
   border-radius:0;padding:13px 14px;font:13px/1.5 "IBM Plex Mono",monospace
 }
 textarea{min-height:88px;resize:vertical}
-textarea:focus,input:focus{outline:none;border-color:var(--gold2);box-shadow:0 0 0 1px rgba(184,148,90,.25)}
+textarea:focus,input:focus,select:focus{outline:none;border-color:var(--gold2);box-shadow:0 0 0 1px rgba(184,148,90,.25)}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .btns{display:flex;gap:8px;margin-top:20px;flex-wrap:wrap}
 button{border:0;padding:12px 18px;font:600 11px Manrope;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
@@ -361,45 +361,59 @@ async function loadBulletin(){
     box.innerHTML = '<p class="no">Bülten yok: '+esc(msg)+'</p><p class="hint">Sunucu kapalıysa: uvicorn app:app --port 8000</p>';
   }
 }
+function kickTime(m){
+  const t = String((m&&m.time)||'').replace('.',':');
+  const mm = t.match(/(\d{1,2}):(\d{2})/);
+  if(!mm) return '—';
+  return String(mm[1]).padStart(2,'0')+':'+mm[2];
+}
+function sortByKick(arr){
+  return (arr||[]).slice().sort((a,b)=>{
+    const d = kickTime(a).localeCompare(kickTime(b));
+    if(d) return d;
+    return String(a.home||'').localeCompare(String(b.home||''),'tr');
+  });
+}
 function renderBulletin(rows, label){
   const box = $('bulletinBox');
   if(!rows.length){ box.innerHTML = '<p class="no">Bülten boş.</p>'; return; }
+  rows = sortByKick(rows);
   window._bulten = rows;
-  const ligs = [...new Set(rows.map(r=>r.league||'').filter(Boolean))].sort();
+  const hours = [...new Set(rows.map(kickTime).filter(t=>t!=='—'))];
   box.innerHTML =
     '<div class="b-tools">'+
       '<input id="bQ" placeholder="Takım ara">'+
-      '<select id="bLig"><option value="">Tüm ligler ('+rows.length+')</option>'+
-        ligs.map(l=>'<option value="'+esc(l)+'">'+esc(l)+' · '+rows.filter(r=>r.league===l).length+'</option>').join('')+
+      '<select id="bLig"><option value="">Tüm saatler ('+rows.length+')</option>'+
+        hours.map(h=>'<option value="'+esc(h)+'">'+esc(h)+' · '+rows.filter(r=>kickTime(r)===h).length+'</option>').join('')+
       '</select></div>'+
-    '<p class="hint" id="bCount">'+rows.length+' maç · '+esc(label)+'</p>'+
+    '<p class="hint" id="bCount">'+rows.length+' maç · saat sırası · '+esc(label)+'</p>'+
     '<div id="bList"></div>';
   function draw(){
     const q = (($('bQ').value||'')+'').toLowerCase().trim();
-    const lig = $('bLig').value;
+    const saat = $('bLig').value;
     const sel = window._bultenSecim && window._bultenSecim.mac_id;
-    const filtered = rows.filter(m=>{
-      if(lig && m.league!==lig) return false;
+    const filtered = sortByKick(rows.filter(m=>{
+      if(saat && kickTime(m)!==saat) return false;
       if(!q) return true;
-      return ((m.home||'')+' '+(m.away||'')+' '+(m.league||'')).toLowerCase().indexOf(q)!==-1;
-    });
-    $('bCount').textContent = filtered.length+' / '+rows.length+' · '+label;
+      return ((m.home||'')+' '+(m.away||'')+' '+(m.league||'')+' '+kickTime(m)).toLowerCase().indexOf(q)!==-1;
+    }));
+    $('bCount').textContent = filtered.length+' / '+rows.length+' · saat sırası · '+label;
     if(!filtered.length){ $('bList').innerHTML = '<p class="b-empty">Eşleşen maç yok.</p>'; return; }
     const groups = {};
     filtered.forEach(m=>{
-      const k = m.league || 'Diğer';
+      const k = kickTime(m);
       (groups[k]=groups[k]||[]).push(m);
     });
     let html = '';
-    Object.keys(groups).forEach(k=>{
-      html += '<div class="b-liga">'+esc(k)+' · '+groups[k].length+'</div>';
+    Object.keys(groups).sort().forEach(k=>{
+      html += '<div class="b-liga">'+esc(k)+' · '+groups[k].length+' maç</div>';
       groups[k].forEach(m=>{
         const i = rows.indexOf(m);
         const on = sel && String(sel)===String(m.mac_id) ? ' on':'';
         html += '<div class="b-card'+on+'" data-i="'+i+'">'+
-          '<div class="saat">'+esc(m.time||'—')+'</div>'+
+          '<div class="saat">'+esc(kickTime(m))+'</div>'+
           '<div><div class="tm">'+esc(m.home||'')+' — '+esc(m.away||'')+'</div>'+
-          '<div class="odds">'+(m.h||'—')+' / '+(m.d||'—')+' / '+(m.a||'—')+'</div></div>'+
+          '<div class="odds">'+(m.h||'—')+' / '+(m.d||'—')+' / '+(m.a||'—')+(m.league?' · '+esc(m.league):'')+'</div></div>'+
           '<button type="button" class="g pick" data-i="'+i+'">Tara</button></div>';
       });
     });
@@ -961,14 +975,21 @@ async function karsilastirBulletin(){
       if(!r.ok) throw new Error(j.detail || 'bülten yok');
       window._bulten = j.matches||[];
     }
-    const rows = window._bulten;
+    const rows = sortByKick(window._bulten||[]);
+    window._bulten = rows;
     if(!rows.length) throw new Error('Bülten boş');
-    let html = '<p class="hint">'+rows.length+' maç · satıra bas, morebets çekilir</p>';
-    rows.slice(0,80).forEach((m,i)=>{
+    let html = '<p class="hint">'+rows.length+' maç · saat sırası · satıra bas</p>';
+    let lastH = '';
+    rows.forEach((m,i)=>{
+      const h = kickTime(m);
+      if(h!==lastH){
+        html += '<div class="b-liga">'+esc(h)+'</div>';
+        lastH = h;
+      }
       html += '<div class="b-card" data-ki="'+i+'">'+
-        '<div class="saat">'+esc(m.time||'—')+'</div>'+
+        '<div class="saat">'+esc(h)+'</div>'+
         '<div><div class="tm">'+esc(m.home||'')+' — '+esc(m.away||'')+'</div>'+
-        '<div class="odds">'+(m.h||'—')+' / '+(m.d||'—')+' / '+(m.a||'—')+'</div></div>'+
+        '<div class="odds">'+(m.h||'—')+' / '+(m.d||'—')+' / '+(m.a||'—')+(m.league?' · '+esc(m.league):'')+'</div></div>'+
         '<button type="button" class="g pick" data-ki="'+i+'">Çek</button></div>';
     });
     box.innerHTML = html;
