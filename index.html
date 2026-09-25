@@ -164,6 +164,7 @@ tr:hover td{background:rgba(228,201,138,.04)}
     <div class="btns">
       <button class="g" onclick="runAll()">Tara</button>
       <button class="b" onclick="loadBulletin()">Günlük bülten</button>
+      <button class="b" onclick="runFilterScan()">Şablon tara</button>
       <button class="b" onclick="runUpdate()">Güncelle</button>
       <button class="r" onclick="clearAll()">Sil</button>
     </div>
@@ -172,15 +173,20 @@ tr:hover td{background:rgba(228,201,138,.04)}
   </section>
   <section id="panel-masa" class="card hidden">
     <p class="kicker">Günlük masa · kuyruk</p>
-    <p class="hint">Bülteni tarar, OYNA üstte. Kapı listesi yok; yorumcu cümlesi var.</p>
+    <p class="hint">Bülteni tarar. Şablon tara: TR-FRA / NOR-DEN / BAR-RAC / LEV-BAR / FB-EYP tüm programa vurulur.</p>
     <div class="btns">
       <button class="g" onclick="runDesk()">Masayı kur</button>
+      <button class="b" onclick="runFilterScan()">Şablon tara</button>
     </div>
     <div id="outMasa" class="mu">Masayı kur.</div>
   </section>
   <section id="panel-bulten" class="card hidden">
     <p class="kicker">Günlük maç bülteni</p>
-    <p class="hint">Satırın Tara’sına bas. Rapor ayrı sekmede açılır, liste burada kalır.</p>
+    <p class="hint">Saat sırası. Şablon tara tüm bülteni filtreler. Satırın Tara’sına basınca Rapor açılır.</p>
+    <div class="btns">
+      <button class="b" onclick="loadBulletin()">Listele</button>
+      <button class="g" onclick="runFilterScan()">Şablon tara</button>
+    </div>
     <div id="bulletinBox"></div>
   </section>
   <section id="panel-detay" class="card hidden">
@@ -204,7 +210,7 @@ tr:hover td{background:rgba(228,201,138,.04)}
     <div id="outExact" class="mu">Önce Model’de Tara.</div>
   </section>
   <section id="panel-oran" class="card hidden">
-    <p class="kicker">OranAnaliz · benzer band + EV / Kelly</p>
+    <p class="kicker">OranAnaliz · benzer band + EV</p>
     <p class="hint">Bültendeki açık MS / 2.5 satırlarını history.json ile aynı oran bandında tarar. Açılış yoksa yalnızca kapanış görünür. Standing bu taramada yok — hız için; BANKO kapıları kalıp+model+EV üzerinden.</p>
     <div class="row">
       <div><label>Tolerans</label><input id="oranTol" type="number" step="0.01" value="0.08"></div>
@@ -360,24 +366,33 @@ function renderBulletin(rows, label){
       if(lig && m.league!==lig) return false;
       if(!q) return true;
       return ((m.home||'')+' '+(m.away||'')+' '+(m.league||'')).toLowerCase().indexOf(q)!==-1;
+    }).slice().sort((a,b)=>{
+      const key = m => {
+        const d = String(m.date||'');
+        const p = d.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+        const iso = p ? (p[3]+'-'+p[2]+'-'+p[1]) : d;
+        const t = String(m.time||'99:99');
+        return iso+' '+t+' '+(m.home||'');
+      };
+      return key(a).localeCompare(key(b));
     });
-    $('bCount').textContent = filtered.length+' / '+rows.length+' · '+label;
+    $('bCount').textContent = filtered.length+' / '+rows.length+' · saat sırası · '+label;
     if(!filtered.length){ $('bList').innerHTML = '<p class="b-empty">Eşleşen maç yok.</p>'; return; }
     const groups = {};
     filtered.forEach(m=>{
-      const k = m.league || 'Diğer';
+      const k = (m.date? m.date+' · ':'')+(m.time||'Saat yok');
       (groups[k]=groups[k]||[]).push(m);
     });
     let html = '';
     Object.keys(groups).forEach(k=>{
-      html += '<div class="b-liga">'+esc(k)+' · '+groups[k].length+'</div>';
+      html += '<div class="b-liga">'+esc(k)+' · '+groups[k].length+' maç</div>';
       groups[k].forEach(m=>{
         const i = rows.indexOf(m);
         const on = sel && String(sel)===String(m.mac_id) ? ' on':'';
         html += '<div class="b-card'+on+'" data-i="'+i+'">'+
           '<div class="saat">'+esc(m.time||'—')+'</div>'+
           '<div><div class="tm">'+esc(m.home||'')+' — '+esc(m.away||'')+'</div>'+
-          '<div class="odds">'+(m.h||'—')+' / '+(m.d||'—')+' / '+(m.a||'—')+'</div></div>'+
+          '<div class="odds">'+(m.league?esc(m.league)+' · ':'')+(m.h||'—')+' / '+(m.d||'—')+' / '+(m.a||'—')+'</div></div>'+
           '<button type="button" class="g pick" data-i="'+i+'">Tara</button></div>';
       });
     });
@@ -466,7 +481,7 @@ async function analyzeText(text, title){
   const parts = splitYorum(brief.yorum||'');
   const voice = brief.commentator || brief.coach || {};
   const karar = (voice.karar||voice.stance||'').toUpperCase();
-  const go = karar==='OYNA' || n>=8;
+  const go = karar==='OYNA' || karar==='BIRIM' || n>=8;
   let html = '<div class="verdict '+(go?'go':'')+'">';
   html += '<div class="kicker">Yorumcu · v'+(brief.version||'5.7')+' · '+(karar||'GEC')+'</div>';
   html += '<div class="v-title">'+esc(title||'Maç')+'</div>';
@@ -587,10 +602,10 @@ async function runOranScan(){
       html += '<div class="kicker">'+(m.league||'')+' · '+(m.kickoff||'')+' · n='+(m.sample||0)+'</div>';
       html += '<div class="v-title">'+esc((m.home||'')+' — '+(m.away||''))+'</div>';
       if(b.label) html += '<p class="v-sub">Banko '+esc(b.gates_yes)+'/'+esc(b.gates_total)+' · '+esc(b.label)+' · '+esc(b.karar||'')+'</p>';
-      html += '<div class="scroll"><table><tr><th>Market</th><th>Açılış</th><th>Kapanış</th><th>Drift</th><th>Kalıp</th><th>Model</th><th>Blend</th><th>EV</th><th>½Kelly</th></tr>';
+      html += '<div class="scroll"><table><tr><th>Market</th><th>Açılış</th><th>Kapanış</th><th>Drift</th><th>Kalıp</th><th>Model</th><th>Blend</th><th>EV</th></tr>';
       (m.markets||[]).slice(0,6).forEach(x=>{
         const evc = (x.ev!=null && x.ev>=0)?'ok':'no';
-        html += '<tr><td>'+esc(x.name)+'</td><td>'+(x.open!=null?x.open:'—')+'</td><td>'+(x.close!=null?x.close:'—')+'</td><td>'+(x.drift!=null?x.drift:'—')+'</td><td>'+(x.hist!=null?x.hist+'%':'—')+'</td><td>'+(x.model!=null?x.model+'%':'—')+'</td><td>'+(x.blend!=null?x.blend+'%':'—')+'</td><td class="'+evc+'">'+(x.ev!=null?x.ev:'—')+'</td><td>'+(x.kelly_half||0)+' · '+ (x.stake||0)+'</td></tr>';
+        html += '<tr><td>'+esc(x.name)+'</td><td>'+(x.open!=null?x.open:'—')+'</td><td>'+(x.close!=null?x.close:'—')+'</td><td>'+(x.drift!=null?x.drift:'—')+'</td><td>'+(x.hist!=null?x.hist+'%':'—')+'</td><td>'+(x.model!=null?x.model+'%':'—')+'</td><td>'+(x.blend!=null?x.blend+'%':'—')+'</td><td class="'+evc+'">'+(x.ev!=null?x.ev:'—')+'</td></tr>';
       });
       html += '</table></div></div>';
     });
@@ -624,7 +639,43 @@ async function pingUpdate(){
 pingUpdate();
 setInterval(runUpdate, 15*60*1000);
 
-async function runDesk(){
+async function runFilterScan(){
+  const box = $('outMasa');
+  showTab('masa');
+  box.innerHTML = '<p class="mu">Bülten şablonlara vuruluyor…</p>';
+  try{
+    const r = await fetch('/api/filter-scan');
+    const j = await r.json();
+    if(!r.ok) throw new Error(j.detail||'tarama yok');
+    if(!j.matches||!j.matches.length){
+      box.innerHTML = '<p class="no">Şablon oturmadı. Taranan '+ (j.scanned||0) +' / bülten '+(j.bulletin||0)+'.</p>';
+      return;
+    }
+    let html = '<p class="hint">'+j.n+' oturan · taranan '+j.scanned+' · bülten '+(j.bulletin||0)+' · '+esc(j.source||'')+'</p>';
+    j.matches.forEach(m=>{
+      const tags = (m.profiles||[]).map(p=>p.selection+' · '+p.name).join(' | ');
+      const o = m.odds||{};
+      html += '<div class="verdict go">';
+      html += '<div class="kicker">'+(m.time||'')+' · '+(m.date||'')+' · '+esc(m.league||'')+'</div>';
+      html += '<div class="v-title">'+esc(m.title||'')+'</div>';
+      html += '<p class="yorum">'+esc(tags)+'</p>';
+      html += '<p class="hint">'+(o.h||'—')+' / '+(o.d||'—')+' / '+(o.a||'—');
+      if(o.o25) html += ' · 2,5Ü '+o.o25;
+      if(o.u25) html += ' · 2,5A '+o.u25;
+      html += '</p>';
+      if(m.mac_id) html += '<button type="button" class="g pickFilt" data-mac="'+esc(String(m.mac_id))+'" data-home="'+esc(m.home||'')+'" data-away="'+esc(m.away||'')+'">Tara</button>';
+      html += '</div>';
+    });
+    box.innerHTML = html;
+    box.onclick = function(ev){
+      const btn = ev.target.closest('.pickFilt');
+      if(!btn) return;
+      pickBulletin({mac_id: btn.getAttribute('data-mac'), home: btn.getAttribute('data-home'), away: btn.getAttribute('data-away')});
+    };
+  }catch(e){
+    box.innerHTML = '<p class="no">Şablon tarama: '+esc(e.message||e)+'</p>';
+  }
+}
   const box = $('outMasa');
   box.innerHTML = '<p class="mu">Masa kuruluyor… bülten + yorumcu.</p>';
   showTab('masa');
@@ -637,9 +688,13 @@ async function runDesk(){
       return;
     }
     let html = '<p class="hint">'+j.n+' maç · havuz '+j.history_n+'</p>';
-    j.matches.forEach(m=>{
-      html += '<div class="verdict '+(m.karar==='OYNA'?'go':'')+'">';
-      html += '<div class="kicker">'+(m.karar||'GEC')+' · '+(m.league||'')+' · '+(m.kickoff||'')+'</div>';
+    j.matches.slice().sort((a,b)=>{
+      const ta = String(a.kickoff||a.time||'99:99');
+      const tb = String(b.kickoff||b.time||'99:99');
+      return ta.localeCompare(tb);
+    }).forEach(m=>{
+      html += '<div class="verdict '+(m.karar==='OYNA'||m.karar==='BIRIM'?'go':'')+'">';
+      html += '<div class="kicker">'+(m.kickoff||m.time||'')+' · '+(m.karar||'GEC')+' · '+(m.league||'')+'</div>';
       html += '<div class="v-title">'+esc((m.home||'')+' — '+(m.away||''))+'</div>';
       html += '<p class="yorum">'+esc(m.script||m.voice||'')+'</p>';
       if(m.scoreline) html += '<p class="hint">skor '+esc(m.scoreline)+'</p>';

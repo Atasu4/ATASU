@@ -1,3 +1,3 @@
 """Tek sürüm numarası — app / meta / zip / UI buradan okur."""
-VERSION = "5.7.0"
+VERSION = "5.7.2"
 NAME = "ATASU Intelligence"

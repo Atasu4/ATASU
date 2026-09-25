@@ -1168,25 +1168,29 @@ def tercih_from_open(ranked: list[dict], n_hist: int) -> list[str]:
         f"Wilson %{wlo if wlo is not None else '-'} · hiza {lay}/6"
     )
     oyna = (
-        lay >= MIN_LAYER
-        and (p or 0) >= MIN_BLEND
-        and (n_hist or 0) >= 25
-        and (wlo is None or wlo >= MIN_WILSON_LO)
+        lay >= 1
+        and (p is None or p >= 56)
+        and (n_hist or 0) >= 8
+        and (wlo is None or wlo >= 46)
+        and MIN_ODD - 0.08 <= float(x.get("odds") or 0) <= MAX_ODD + 0.25
+    )
+    birim = (not oyna) and float(x.get("odds") or 0) >= 1.22 and (
+        (p or 0) >= 52 or (m or 0) >= 52 or (h or 0) >= 54 or lay >= 1
     )
     if oyna:
         ev = x.get("ev")
         lines.append(
-            f"KARAR: OYNA · {x['name']} {x['odds']} · tek iş · yarım Kelly"
+            f"KARAR: OYNA · {x['name']} {x['odds']}"
             + (f" · EV {ev}" if ev is not None else "")
         )
+    elif birim:
+        lines.append(f"KARAR: OYNA · {x['name']} {x['odds']} · ince")
     else:
         lines.append("KARAR: GEÇ")
-        if lay < MIN_LAYER:
-            lines.append("Katmanlar aynı işte durmuyor.")
-        elif (p or 0) < MIN_BLEND:
-            lines.append(f"Birleşik %{(p or 0):.0f} < %{MIN_BLEND:.0f}.")
-        elif (n_hist or 0) < 25:
-            lines.append(f"Benzer maç {n_hist or 0}; örnek yetmez.")
-        elif wlo is not None and wlo < MIN_WILSON_LO:
-            lines.append(f"Wilson alt %{wlo} < %{MIN_WILSON_LO:.0f} (küçük n cezası).")
+        if float(x.get("odds") or 0) < MIN_ODD:
+            lines.append("Oran çok kısa.")
+        elif (p or 0) and (p or 0) < 52:
+            lines.append(f"Birleşik %{(p or 0):.0f} zayıf.")
+        elif (n_hist or 0) < 8:
+            lines.append(f"Benzer maç {n_hist or 0}.")
     return lines[:8]

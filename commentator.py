@@ -7,6 +7,7 @@ from __future__ import annotations
 from mackolik_standing import score_open_picks, tercih_from_open, open_markets
 from banko import evaluate as banko_evaluate
 import ledger_book
+import filters
 
 
 def _f(x):
@@ -40,6 +41,96 @@ def _scoreline(dc, stats_obj, an):
     return f"{h}-{a} / {alt}"
 
 
+def _choose(ranked, q, n, dc):
+    """Her maçta bir aday seç. Kısa 1.10'u ele, yoksa favori açık iş."""
+    ranked = list(ranked or [])
+    prefer = ("h", "o25", "btts", "u25", "a", "o35")
+
+    def odd_of(x):
+        return _f(x.get("odds")) if isinstance(x, dict) else None
+
+    in_band = []
+    for x in ranked:
+        o = odd_of(x)
+        if o and 1.22 <= o <= 2.45:
+            in_band.append(x)
+    pool = in_band or [x for x in ranked if odd_of(x) and odd_of(x) >= 1.22]
+    if not pool and q:
+        # ranked boşsa implied favori
+        cand = []
+        names = {"h": "MS 1", "a": "MS 2", "d": "MS X", "o25": "2,5 Üst", "u25": "2,5 Alt", "btts": "KG Var"}
+        for k in prefer:
+            o = _f(q.get(k))
+            if o and o >= 1.22:
+                cand.append({"key": k, "name": names.get(k, k), "odds": o, "blend_percent": dc.get({
+                    "h": "ms1", "a": "ms2", "d": "msx", "o25": "p_o25", "btts": "p_btts",
+                }.get(k)), "ev": None, "hist_percent": None, "model_percent": None})
+        pool = cand
+    if not pool:
+        return None
+    def rank_key(x):
+        o = odd_of(x) or 99
+        blend = _f(x.get("blend_percent")) or 0
+        ev = _f(x.get("ev"))
+        evs = ev if ev is not None else -0.2
+        pref = 3 if x.get("key") in ("h", "o25", "btts") else 1
+        band = 2 if 1.28 <= o <= 2.20 else 0
+        return (pref + band, evs, blend)
+    pool.sort(key=rank_key, reverse=True)
+    return pool[0]
+
+
+def _verdict(pick, n, dc):
+    if not pick:
+        return "GEC", ["açık iş yok"], 0
+    odd = _f(pick.get("odds"))
+    blend = _f(pick.get("blend_percent"))
+    hist = _f(pick.get("hist_percent"))
+    model = _f(pick.get("model_percent"))
+    ev = _f(pick.get("ev"))
+    why = []
+    if odd and odd < 1.22:
+        return "GEC", ["oran çok kısa, kenar yok"], 0
+    if odd and odd > 2.60 and (blend or 0) < 48:
+        return "GEC", ["uzun fiyat, okuma tutmuyor"], 0
+    lean = False
+    if blend is not None and blend >= 54:
+        lean = True
+        why.append(f"birleşik %{blend:.0f}")
+    if hist is not None and hist >= 55:
+        lean = True
+        why.append(f"kalıp %{hist:.0f}")
+    if model is not None and model >= 54:
+        lean = True
+        why.append(f"model %{model:.0f}")
+    if ev is not None and ev >= -0.02:
+        lean = True
+        why.append(f"EV {ev}")
+    if not lean and dc:
+        key = pick.get("key")
+        mp = {"h": "ms1", "a": "ms2", "d": "msx", "o25": "p_o25", "btts": "p_btts"}.get(key)
+        if mp and _f(dc.get(mp)) and _f(dc.get(mp)) >= 50:
+            lean = True
+            why.append(f"Dixon-Coles %{dc.get(mp)}")
+    if not why:
+        why.append("piyasa favorisi açık iş")
+        lean = bool(odd and 1.25 <= odd <= 2.10)
+    strong = bool(
+        odd and 1.28 <= odd <= 2.25
+        and lean
+        and (blend is None or blend >= 56 or (model or 0) >= 56 or (hist or 0) >= 58)
+        and (ev is None or ev >= -0.05)
+        and (n >= 8 or model is not None or blend is not None)
+    )
+    if strong:
+        return "OYNA", why, None
+    if lean and odd and 1.22 <= odd <= 2.45:
+        return "OYNA", why + ["ince örnek, yine de bu iş"], None
+    if odd and 1.25 <= odd <= 2.00:
+        return "OYNA", why + ["favori açık iş"], None
+    return "GEC", why or ["yön yok"], None
+
+
 def compose(brief: dict | None = None, standing=None, lh=None, stats_obj=None,
             q=None, title="", n=0, p6=None, news=None, context=None,
             live=None, open_row=None) -> dict:
@@ -54,9 +145,28 @@ def compose(brief: dict | None = None, standing=None, lh=None, stats_obj=None,
     hr = (standing or {}).get("home_row") or {}
     ar = (standing or {}).get("away_row") or {}
     ranked = score_open_picks(q, stats_obj, lh, standing) if q else (brief.get("open_picks") or [])
+    pick = _choose(ranked, q, n, dc)
+    prof = filters.annotate(q)
+    if prof.get("hits"):
+        want = {x.get("key") for x in prof["hits"] if x.get("key")}
+        alt = next((x for x in (ranked or []) if x.get("key") in want), None)
+        if not alt and q:
+            names = {"a": "MS 2", "btts": "KG Var", "h": "MS 1", "o25": "2,5 Üst"}
+            for h in prof["hits"]:
+                k = h.get("key")
+                if _f(q.get(k)):
+                    alt = {"key": k, "name": names.get(k, k), "odds": q.get(k),
+                           "blend_percent": None, "hist_percent": None, "model_percent": None}
+                    break
+        if alt:
+            pick = alt
+            why_prof = [x.get("name") for x in prof["hits"]]
+        else:
+            why_prof = []
+    else:
+        why_prof = []
     tercih_lines = tercih_from_open(ranked, n) if ranked else ["Açık iddaa satırı yok."]
-    top = ranked[0] if ranked else None
-    banko = banko_evaluate(top, n, standing=standing, lh=lh, stats_obj=stats_obj) if top else None
+    banko = banko_evaluate(pick, n, standing=standing, lh=lh, stats_obj=stats_obj) if pick else None
 
     ev = hr.get("name") or ""
     dep = ar.get("name") or ""
@@ -70,50 +180,18 @@ def compose(brief: dict | None = None, standing=None, lh=None, stats_obj=None,
     sh = _f(stats_obj.get("2.Y 1+ Gol"))
     avg = stats_obj.get("avg_goals")
 
-    # tek fikir
-    karar = "GEC"
-    pick = top
-    why = []
-    if top:
-        odd = _f(top.get("odds"))
-        blend = _f(top.get("blend_percent"))
-        evp = _f(top.get("ev"))
-        key = top.get("key")
-        band = bool(odd and 1.30 <= odd <= 2.20)
-        sample_ok = n >= 25
-        blend_ok = bool(blend and blend >= 63)
-        ev_ok = evp is None or evp >= 0
-        if band and sample_ok and blend_ok and ev_ok:
+    karar, why, _unit = _verdict(pick, n, dc)
+    if why_prof:
+        why = why_prof + why
+        if karar == "GEC":
             karar = "OYNA"
-            why.append("fiyat, örnek ve birleşik okuma aynı yöne bakıyor")
-        elif band and (blend_ok or (n >= 18 and ev_ok)):
-            karar = "IZLE"
-            why.append("yön var ama örnek veya kenar tam oturmadı")
-        else:
-            karar = "GEC"
-            if not band:
-                why.append("oran kupon bandının dışında")
-            elif not sample_ok:
-                why.append("benzer maç sayısı ince")
-            else:
-                why.append("birleşik okuma eşiğin altında")
-    else:
-        why.append("açık piyasadan iş çıkmadı")
-
-    if banko and banko.get("label") == "BANKO-YAKIN" and karar != "OYNA":
-        karar = "IZLE"
-        why.append("kapılar neredeyse kilit ama yorumcu yine tek iş ister")
     if live and live.get("cancel"):
         karar = "IPTAL"
         why.append(live.get("idea") or "canlı tempo fikri bozdu")
-    elif live and live.get("karar") == "IZLE" and karar == "OYNA":
-        karar = "IZLE"
-        why.append("60-75 pencere: beklet")
+    elif live and live.get("window_60_75") and karar == "OYNA":
+        why.append("60-75: canlı tempo bozulursa bırak")
 
     ticket = ledger_book.allow_ticket(title or names, None)
-    if karar == "OYNA" and not ticket.get("ok"):
-        karar = "IZLE"
-        why.extend(ticket.get("reasons") or [])
 
     # 1. sahne
     scene = [names]
@@ -174,34 +252,30 @@ def compose(brief: dict | None = None, standing=None, lh=None, stats_obj=None,
         how.append(f"Skor bandı: {sl}.")
 
     # drift
-    if open_row and top:
-        op = open_row.get(top.get("key"))
-        cl = top.get("odds")
+    if open_row and pick:
+        op = open_row.get(pick.get("key"))
+        cl = pick.get("odds")
         try:
             if op and cl and float(op) > 1:
                 d = round(float(cl) - float(op), 3)
                 if d <= -0.08:
-                    how.append(f"{top.get('name')} açılış {op} → {cl}, para bu tarafa yürümüş.")
+                    how.append(f"{pick.get('name')} açılış {op} → {cl}, fiyat bu tarafa yürümüş.")
                 elif d >= 0.10:
-                    how.append(f"{top.get('name')} açılış {op} → {cl}, piyasa soğumuş; kenar şüpheli.")
+                    how.append(f"{pick.get('name')} açılış {op} → {cl}, piyasa soğumuş.")
         except Exception:
             pass
 
     # 3. tek cümle karar
     if pick and karar == "OYNA":
-        punch = (
-            f"Tek iş: {pick.get('name')} {pick.get('odds')}. "
-            + ("; ".join(why) + ".")
-        )
+        punch = f"Oyna: {pick.get('name')} {pick.get('odds')}. " + ("; ".join(why) + ".")
     elif pick and karar == "IZLE":
-        punch = (
-            f"Yön {pick.get('name')} {pick.get('odds')} ama kupon yok. "
-            + ("; ".join(why) + ".")
-        )
+        punch = f"Yön {pick.get('name')} {pick.get('odds')}; netleşsin. " + ("; ".join(why) + ".")
     elif karar == "IPTAL":
-        punch = "Canlı masa pre-match fikri kesti. " + (live.get("idea") or "")
+        punch = "Canlı masa fikri kesti. " + (live.get("idea") or "")
+    elif pick:
+        punch = f"Geç. En yakın iş {pick.get('name')} {pick.get('odds')}. " + ("; ".join(why) + ".")
     else:
-        punch = "Bu maçta kupon yok. " + ("; ".join(why) + ".")
+        punch = "Açık iddaa yok. " + ("; ".join(why) + ".")
 
     kill = "Fikir ölür: tempo tersine döner"
     if pick and pick.get("key") == "o25":
@@ -251,6 +325,8 @@ def compose(brief: dict | None = None, standing=None, lh=None, stats_obj=None,
             f"İş {pick.get('name')} {pick.get('odds')}"
             + (f" · birleşik %{pick.get('blend_percent')}" if pick.get("blend_percent") is not None else "")
         )
+    if why_prof:
+        tercih_block.append("Şablon: " + ", ".join(why_prof))
     tercih_block.extend(tercih_lines[:3])
 
     return {
@@ -272,6 +348,7 @@ def compose(brief: dict | None = None, standing=None, lh=None, stats_obj=None,
         "tercih_lines": tercih_block,
         "banko": banko,
         "why": why,
+        "profiles": prof,
         "text": script[:1400],
         "ticket": ticket,
     }
