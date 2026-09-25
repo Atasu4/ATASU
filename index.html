@@ -133,14 +133,13 @@ tr:hover td{background:rgba(228,201,138,.04)}
     <div>
       <h1 class="word">ATA<span>SU</span> <i>Intelligence</i></h1>
       <div class="meta" id="metaLine">Yükleniyor</div>
-      <a class="b" href="/indir" download="ATASU_5.7.0.zip" style="display:inline-block;margin-top:10px;text-decoration:none">Zip indir</a>
+      <a class="b" href="/indir" download="ATASU_5.7.3.zip" style="display:inline-block;margin-top:10px;text-decoration:none">Zip indir</a>
     </div>
     <nav class="tabs">
       <button class="tab on" data-t="model">Rapor</button>
       <button class="tab" data-t="masa">Masa</button>
       <button class="tab" data-t="bulten">Bülten</button>
       <button class="tab" data-t="detay">Detay</button>
-      <button class="tab" data-t="kasa">Kasa</button>
       <button class="tab" data-t="oran">Oran</button>
       <button class="tab" data-t="p6">+6</button>
     </nav>
@@ -168,7 +167,7 @@ tr:hover td{background:rgba(228,201,138,.04)}
       <button class="b" onclick="runUpdate()">Güncelle</button>
       <button class="r" onclick="clearAll()">Sil</button>
     </div>
-    <p class="hint" id="updHint">Yorumcu tek iş konuşur. Güncelle: cache sil + biten maç + ledger sonuç.</p>
+    <p class="hint" id="updHint">Yorumcu tek iş konuşur. Güncelle: cache sil + biten maç.</p>
     <div id="outModel"></div>
   </section>
   <section id="panel-masa" class="card hidden">
@@ -193,28 +192,11 @@ tr:hover td{background:rgba(228,201,138,.04)}
     <p class="kicker">Tablo · form · açık sıra</p>
     <div id="outDetay" class="mu">Önce Rapor’da Tara.</div>
   </section>
-  <section id="panel-kasa" class="card hidden">
-    <p class="kicker">Kasa · defter</p>
-    <div class="row">
-      <div><label>Banka</label><input id="kasaBank" type="number" value="1000"></div>
-      <div><label>Günlük tavan</label><input id="kasaGun" type="number" value="3"></div>
-    </div>
-    <div class="btns">
-      <button class="g" onclick="saveKasa()">Kaydet</button>
-      <button class="b" onclick="loadKasa()">Yenile</button>
-    </div>
-    <div id="outKasa" class="mu">Kasa yüklenmedi.</div>
-  </section>
-  <section id="panel-exact" class="card hidden">
-    <p class="kicker">Excel · kalıp + model + para</p>
-    <div id="outExact" class="mu">Önce Model’de Tara.</div>
-  </section>
   <section id="panel-oran" class="card hidden">
     <p class="kicker">OranAnaliz · benzer band + EV</p>
-    <p class="hint">Bültendeki açık MS / 2.5 satırlarını history.json ile aynı oran bandında tarar. Açılış yoksa yalnızca kapanış görünür. Standing bu taramada yok — hız için; BANKO kapıları kalıp+model+EV üzerinden.</p>
+    <p class="hint">Bültendeki açık MS / 2.5 satırlarını history ile aynı oran bandında tarar. Para önerisi yok.</p>
     <div class="row">
       <div><label>Tolerans</label><input id="oranTol" type="number" step="0.01" value="0.08"></div>
-      <div><label>Banka</label><input id="oranBank" type="number" value="1000"></div>
     </div>
     <div class="btns">
       <button class="g" onclick="runOranScan()">Bülteni tara</button>
@@ -230,7 +212,7 @@ tr:hover td{background:rgba(228,201,138,.04)}
 </div>
 <script>
 const $ = id => document.getElementById(id);
-const TABS = ['model','masa','bulten','detay','kasa','exact','oran','p6'];
+const TABS = ['model','masa','bulten','detay','oran','p6'];
 function showTab(id){
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on', b.dataset.t===id));
   TABS.forEach(t=>$('panel-'+t).classList.toggle('hidden', t!==id));
@@ -586,16 +568,15 @@ async function runOranScan(){
   box.innerHTML = '<p class="mu">Bülten taranıyor…</p>';
   showTab('oran');
   const tol = Number($('oranTol').value||0.08);
-  const bank = Number($('oranBank').value||1000);
   try{
-    const r = await fetch('/api/oran-scan?tolerance='+tol+'&bankroll='+bank+'&limit=24');
+    const r = await fetch('/api/oran-scan?tolerance='+tol+'&limit=24');
     const j = await r.json();
     if(!r.ok) throw new Error(j.detail||'tarama yok');
     if(!j.matches||!j.matches.length){
       box.innerHTML = '<p class="no">Açık MS oranı olan bülten satırı yok. Havuz '+esc(j.history_n)+'.</p>';
       return;
     }
-    let html = '<p class="hint">'+j.n+' maç · history '+j.history_n+' · banka '+j.bankroll+' · tol ±'+j.tolerance+'</p>';
+    let html = '<p class="hint">'+j.n+' maç · history '+j.history_n+' · tol ±'+j.tolerance+'</p>';
     j.matches.forEach(m=>{
       const b = m.banko||{};
       html += '<div class="verdict">';
@@ -676,6 +657,7 @@ async function runFilterScan(){
     box.innerHTML = '<p class="no">Şablon tarama: '+esc(e.message||e)+'</p>';
   }
 }
+async function runDesk(){
   const box = $('outMasa');
   box.innerHTML = '<p class="mu">Masa kuruluyor… bülten + yorumcu.</p>';
   showTab('masa');
@@ -704,35 +686,6 @@ async function runFilterScan(){
   }catch(e){
     box.innerHTML = '<p class="no">Masa kurulamadı: '+esc(e.message||e)+'</p>';
   }
-}
-async function loadKasa(){
-  const box = $('outKasa');
-  try{
-    const r = await fetch('/api/ledger');
-    const j = await r.json();
-    const b = (j.bank||{});
-    if($('kasaBank') && b.bank!=null) $('kasaBank').value = b.bank;
-    if($('kasaGun') && b.max_same_day!=null) $('kasaGun').value = b.max_same_day;
-    let html = '<div class="kpi">';
-    html += '<div class="k"><span>Kasa</span><b>'+(b.bank!=null?b.bank:'—')+'</b></div>';
-    html += '<div class="k"><span>Isabet</span><b>'+(j.hit_pct!=null?j.hit_pct+'%':'—')+'</b></div>';
-    html += '<div class="k"><span>Sonuç</span><b>'+(j.settled||0)+'</b></div>';
-    html += '<div class="k"><span>PnL</span><b>'+(j.pnl!=null?j.pnl:'—')+'</b></div></div>';
-    if(j.clv_avg!=null) html += '<p class="hint">Ortalama CLV %'+j.clv_avg+'</p>';
-    (j.rows||[]).slice().reverse().slice(0,20).forEach(x=>{
-      html += '<div class="chip">'+esc(x.title||'')+' · '+esc(x.pick||'')+' · '+(x.odds||'')+' · '+(x.settled||x.karar||'')+'</div>';
-    });
-    box.innerHTML = html;
-  }catch(e){
-    box.innerHTML = '<p class="no">'+esc(e.message||e)+'</p>';
-  }
-}
-async function saveKasa(){
-  await fetch('/api/bankroll',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    bank: Number($('kasaBank').value||1000),
-    max_same_day: Number($('kasaGun').value||3)
-  })});
-  loadKasa();
 }
 </script>
 </body>

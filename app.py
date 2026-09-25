@@ -2247,7 +2247,10 @@ def api_oran_scan_bulletin(tolerance: float = 0.08, bankroll: float = 1000, limi
 @app.get("/api/filter-scan")
 def api_filter_scan(date: str = ""):
     """Tüm bülteni referans şablonlara vur. History taramaz."""
-    pack = bulletin(date)
+    try:
+        pack = bulletin(date)
+    except Exception as e:
+        return {"ok": False, "n": 0, "scanned": 0, "matches": [], "error": str(e)[:160]}
     hits = []
     scanned = 0
     for m in pack.get("matches") or []:
