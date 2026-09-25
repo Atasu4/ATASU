@@ -147,7 +147,17 @@ def compose(brief: dict | None = None, standing=None, lh=None, stats_obj=None,
     ranked = score_open_picks(q, stats_obj, lh, standing) if q else (brief.get("open_picks") or [])
     pick = _choose(ranked, q, n, dc)
     prof = filters.annotate(q)
-    if prof.get("hits"):
+    st = None
+    try:
+        import strategy as _st
+        st = _st.pick(q, title)
+    except Exception:
+        st = None
+    if st and st.get("karar") == "OYNA" and st.get("key"):
+        pick = {"key": st["key"], "name": st.get("name"), "odds": st.get("odds"),
+                "blend_percent": None, "hist_percent": None, "model_percent": None}
+        why_prof = [st.get("label") or st.get("strategy")]
+    elif prof.get("hits"):
         want = {x.get("key") for x in prof["hits"] if x.get("key")}
         alt = next((x for x in (ranked or []) if x.get("key") in want), None)
         if not alt and q:

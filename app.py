@@ -9,6 +9,7 @@ from pathlib import Path
 from collections import Counter
 import json, re, os, time
 from datetime import datetime, timedelta
+import strategy
 
 ROOT = Path(__file__).parent
 HISTORY_FILE = ROOT / "data" / "history.json"
@@ -2368,8 +2369,8 @@ def api_filter_scan(date: str = ""):
         if len(q) < 2:
             continue
         scanned += 1
-        profs = filters.match_profiles(q)
-        if not profs:
+        st = strategy.pick(q, title=f"{m.get('home') or ''} - {m.get('away') or ''}")
+        if st.get("karar") != "OYNA":
             continue
         hits.append({
             "home": m.get("home"),
@@ -2380,8 +2381,14 @@ def api_filter_scan(date: str = ""):
             "league": m.get("league"),
             "mac_id": m.get("mac_id"),
             "odds": q,
-            "profiles": [{"id": p["id"], "name": p["name"], "selection": p["selection"],
-                          "key": p.get("key"), "why": p.get("why")} for p in profs],
+            "karar": "OYNA",
+            "pick": st.get("name"),
+            "pick_key": st.get("key"),
+            "pick_odds": st.get("odds"),
+            "strategy": st.get("label"),
+            "why": st.get("why"),
+            "profiles": [{"id": p, "name": st.get("label"), "selection": st.get("name")}
+                         for p in (st.get("profiles") or [st.get("strategy")] ) if p],
         })
     hits.sort(key=lambda x: (x.get("date") or "", x.get("time") or "99:99"))
     return {
@@ -2391,6 +2398,6 @@ def api_filter_scan(date: str = ""):
         "scanned": scanned,
         "n": len(hits),
         "matches": hits,
-        "filters": [p["id"] for p in filters.PROFILES],
+        "filters": [s["id"] for s in strategy.SIEVES],
     }
 
