@@ -97,6 +97,24 @@ PROFILES = [
         "hit_percent": 66.7,
         "why": "İddaa: MS1 kapanışta düşmüş, X 7.32 / MS2 15.25, 2,5Ü 1.36, KG Yok 1.44. 8-0. Havuzda üst %67, ev %73. KG bu şablonda yok.",
     },
+    {
+        "id": "iki_taraf_2",
+        "name": "İki taraf 2+ (haftalık bülten)",
+        "selection": "2,5 Üst",
+        "key": "o25",
+        "keys": ["o25"],
+        "ref_match": "21-25.09.2026 İddaa biten, her iki taraf ≥2 gol (53 maç / 36 oran)",
+        "ref_odds": {"fav": 1.63, "d": 3.46, "o25": 1.47},
+        "need": [
+            ("d", 3.20, 4.20),
+            ("o25", 1.35, 1.55),
+        ],
+        "fav": [1.35, 1.90],
+        "sample": 36,
+        "wins": 20,
+        "hit_percent": 55.6,
+        "why": "Son hafta iki taraf 2+ gol: favori 1.35-1.90, X 3.20-4.20, 2,5Ü 1.35-1.55. Medyan 1.63 / 3.46 / 1.47. İY KG bu bantta kilit değil. Tek iş 2,5 Üst.",
+    },
 ]
 
 
@@ -120,6 +138,14 @@ def match_profiles(q: dict | None) -> list[dict]:
             if not passed:
                 ok = False
             checks.append({"key": key, "odds": v, "range": [lo, hi], "passed": passed})
+        fav_band = rule.get("fav")
+        if fav_band:
+            h, a = _odd(q.get("h")), _odd(q.get("a"))
+            fav = min([x for x in (h, a) if x is not None], default=None)
+            passed = fav is not None and fav_band[0] <= fav <= fav_band[1]
+            if not passed:
+                ok = False
+            checks.append({"key": "fav", "odds": fav, "range": fav_band, "passed": passed})
         opt_ok = True
         for key, lo, hi in rule.get("optional") or []:
             v = _odd(q.get(key))

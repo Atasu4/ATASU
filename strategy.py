@@ -31,6 +31,21 @@ def _dead_ou(odd):
 # Öncelik: dar şablon > genel süzgeç. Bir maçta tek satır.
 SIEVES = [
     {
+        "id": "iki_taraf_2",
+        "name": "İki taraf 2+",
+        "key": "o25",
+        "need": lambda q: (
+            _in(q.get("o25"), 1.35, 1.55)
+            and _in(q.get("d"), 3.20, 4.20)
+            and (
+                (_in(q.get("h"), 1.35, 1.90) and (not _f(q.get("a")) or q.get("h") <= q.get("a")))
+                or (_in(q.get("a"), 1.35, 1.90) and (not _f(q.get("h")) or q.get("a") <= q.get("h")))
+            )
+        ),
+        "kill": lambda q: _dead_ou(q.get("o25")),
+        "why": "Favori 1.35-1.90 + X 3.20-4.20 + 2,5Ü 1.35-1.55. Son hafta iki taraf 2+ gol seti.",
+    },
+    {
         "id": "dep_kisa",
         "name": "Deplasman favori",
         "key": "a",
@@ -85,6 +100,15 @@ def pick(q: dict | None, title: str = "") -> dict:
     if hits:
         h = hits[0]
         key = h.get("key") or "h"
+        if not _f(q.get(key)):
+            for cand in hits:
+                for k in (cand.get("keys") or []) + [cand.get("key"), "o25", "a", "h"]:
+                    if k and _f(q.get(k)):
+                        h, key = cand, k
+                        break
+                else:
+                    continue
+                break
         odd = _f(q.get(key))
         dead = (_dead_ms(odd) if key in ("h", "a") else _dead_ou(odd)) if odd else False
         if dead:
@@ -101,7 +125,7 @@ def pick(q: dict | None, title: str = "") -> dict:
         return {
             "karar": "OYNA",
             "key": key,
-            "name": h.get("selection") or NAMES.get(key, key),
+            "name": NAMES.get(key) or h.get("selection"),
             "odds": odd,
             "strategy": h.get("id"),
             "label": h.get("name"),
