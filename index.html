@@ -217,7 +217,11 @@ tr:hover td{background:rgba(228,201,138,.04)}
       </table>
     </div>
     <div class="btns"><button class="b" type="button" onclick="addRefRow()">+ Satır</button></div>
-    <label>Ham maç verisi</label>
+    <div class="btns" style="margin-top:4px">
+      <button class="g" type="button" onclick="karsilastirBulletin()">Bültenden otomatik çek</button>
+    </div>
+    <div id="karsilastirList" class="mu" style="margin:10px 0">Bülten henüz çekilmedi. Butona bas; satıra dokununca oranlar Maçkolik morebets’ten gelir.</div>
+    <label>Ham maç verisi (otomatik dolar)</label>
     <textarea id="matchInput" placeholder="Maç Sonucu14355&#10;1&#10;1.70&#10;X&#10;3.33&#10;2&#10;3.48"></textarea>
     <div class="btns">
       <button class="g" type="button" onclick="runAnalysis()">Analizi çalıştır</button>
@@ -918,6 +922,59 @@ function exportCSV(){
   URL.revokeObjectURL(url);
 }
 loadPreset('sistem1');
+
+async function karsilastirBulletin(){
+  const box = $('karsilastirList');
+  box.innerHTML = '<p class="mu">Bülten yükleniyor…</p>';
+  try{
+    if(!window._bulten || !window._bulten.length){
+      const iso = localISO();
+      let r = await fetch('/api/bulletin?date='+iso);
+      let j = await r.json().catch(()=>({}));
+      if(!r.ok || !(j.matches||[]).length){
+        r = await fetch('/api/bulletin');
+        j = await r.json().catch(()=>({}));
+      }
+      if(!r.ok) throw new Error(j.detail || 'bülten yok');
+      window._bulten = j.matches||[];
+    }
+    const rows = window._bulten;
+    if(!rows.length) throw new Error('Bülten boş');
+    let html = '<p class="hint">'+rows.length+' maç · satıra bas, morebets çekilir</p>';
+    rows.slice(0,80).forEach((m,i)=>{
+      html += '<div class="b-card" data-ki="'+i+'">'+
+        '<div class="saat">'+esc(m.time||'—')+'</div>'+
+        '<div><div class="tm">'+esc(m.home||'')+' — '+esc(m.away||'')+'</div>'+
+        '<div class="odds">'+(m.h||'—')+' / '+(m.d||'—')+' / '+(m.a||'—')+'</div></div>'+
+        '<button type="button" class="g pick" data-ki="'+i+'">Çek</button></div>';
+    });
+    box.innerHTML = html;
+    box.onclick = function(ev){
+      const el = ev.target.closest('[data-ki]');
+      if(!el) return;
+      const i = Number(el.getAttribute('data-ki'));
+      if(rows[i]) pullKarsilastirMatch(rows[i]);
+    };
+  }catch(e){
+    box.innerHTML = '<p class="no">'+esc(e.message||e)+'</p>';
+  }
+}
+async function pullKarsilastirMatch(m){
+  const box = $('karsilastirList');
+  const title = (m.home||'')+' - '+(m.away||'');
+  box.insertAdjacentHTML('afterbegin', '<p class="mu">Oranlar alınıyor… '+esc(title)+'</p>');
+  try{
+    const r = await fetch('/api/from-mac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mac_id:String(m.mac_id), title})});
+    const j = await r.json();
+    if(!r.ok) throw new Error(j.detail||'oran yok');
+    $('matchInput').value = j.text||'';
+    if(!refRows.length) loadPreset('sistem1');
+    runAnalysis();
+    runHTFT();
+  }catch(e){
+    alert(e.message||e);
+  }
+}
 </script>
 </body>
 </html>

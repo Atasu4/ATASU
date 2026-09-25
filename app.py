@@ -1373,10 +1373,14 @@ def _extract_mac_id(url, body=""):
     return None
 
 
-def _morebets_bulletin(raw: str):
+def _morebets_bulletin(raw: str, mac_id: str = ""):
     m = re.search(r'Match:"([^"]+)"', raw) or re.search(r'"Match"\s*:\s*"([^"]+)"', raw)
     name = m.group(1) if m else ""
+    code = re.sub(r"\D", "", str(mac_id or ""))
+    if len(code) < 3:
+        code = "10000"
     lines = [name] if name else []
+    paste = []
     wanted = {
         "Maç Sonucu": "ms",
         "2,5 Alt/Üst": "25",
@@ -1394,6 +1398,14 @@ def _morebets_bulletin(raw: str):
         "1. Yarı / Maç Sonucu": "iyms",
         "Half Time / Full Time": "iyms",
         "HT/FT": "iyms",
+        "1. Yarı Sonucu": "iy",
+        "Tek/Çift": "oc",
+        "Korner Tek/Çift": "koc",
+        "Daha Çok Gol Olacak Yarı": "dcgy",
+        "Evsahibi 0,5 Alt/Üst": "ev05",
+        "Deplasman 0,5 Alt/Üst": "dep05",
+        "Maç Sonucu ve (4,5) Alt/Üst": "ms45",
+        "1,5 Alt/Üst": "15",
     }
     sov_au = []
     for mm in re.finditer(r'"MarketType":\{"Id":\d+,"Name":"([^"]+)","Title":"[^"]+"\}.*?"Outcomes":\[(.*?)\]', raw):
@@ -1402,7 +1414,12 @@ def _morebets_bulletin(raw: str):
         kind = wanted.get(title)
         if not kind and re.search(r"yar[ıi]\s*/\s*ma[cç]|i[yÿ]/ms|ht\s*/\s*ft|half\s*time\s*/\s*full", title, re.I):
             kind = "iyms"
-        if not outs or not kind:
+        if outs:
+            paste.append(f"{title}{code}")
+            for a, b in outs:
+                paste.append(a)
+                paste.append(b)
+        if not kind:
             continue
         d = {a: b for a, b in outs}
         if kind == "ms" and all(k in d for k in ("1", "X", "2")):
@@ -1433,6 +1450,21 @@ def _morebets_bulletin(raw: str):
                 lines.append(f"4,5 Alt/Üst proxy g45 {g['4-5']}")
             if "6+" in g:
                 lines.append(f"6+ Gol {g['6+']}")
+            if "2-3" in g:
+                lines.append(f"Toplam Gol Aralığı 2-3 Gol {g['2-3']}")
+            if "0-1" in g:
+                lines.append(f"Toplam Gol Aralığı 0-1 Gol {g['0-1']}")
+        elif kind == "iy" and all(k in d for k in ("1", "X", "2")):
+            lines.append(f"1. Yarı Sonucu {d['1']} {d['X']} {d['2']}")
+        elif kind == "oc" and "Tek" in d:
+            lines.append(f"Tek/Çift Tek {d['Tek']}" + (f" Çift {d.get('Çift','')}" if d.get("Çift") else ""))
+        elif kind == "koc" and "Tek" in d:
+            lines.append(f"Korner Tek/Çift Tek {d['Tek']}")
+        elif kind == "dcgy":
+            bits = " ".join(f"{k} {v}" for k, v in outs)
+            lines.append("Daha Çok Gol Olacak Yarı " + bits)
+        elif kind == "15" and "Üst" in d:
+            lines.append(f"1,5 Alt/Üst {d.get('Alt','')} {d['Üst']}")
         elif kind == "iyms":
             order = ["1/1", "1/X", "1/2", "X/1", "X/X", "X/2", "2/1", "2/X", "2/2"]
             got = []
@@ -1448,7 +1480,13 @@ def _morebets_bulletin(raw: str):
     if sov_au and not any(x.startswith("4,5 Alt/Üst ") for x in lines):
         _, a, u = sov_au[0]
         lines.append(f"4,5 Alt/Üst {a} {u}")
-    return name, "\n".join(lines).strip()
+    compact = "\n".join(lines).strip()
+    block = "\n".join(paste).strip()
+    if block:
+        text = (compact + "\n\n" + block).strip()
+    else:
+        text = compact
+    return name, text
 
 
 @app.post("/api/match-link")
@@ -1474,7 +1512,7 @@ def match_link(req: LinkReq):
         if mac_id:
             try:
                 raw = _fetch(f"https://arsiv.mackolik.com/AjaxHandlers/IddaaHandler.aspx?command=morebets&mac={mac_id}&type=ByLeague")
-                name, bulletin = _morebets_bulletin(raw)
+                name, bulletin = _morebets_bulletin(raw, mac_id)
                 if name and not title:
                     title = name
                 if bulletin:
@@ -1509,7 +1547,7 @@ def from_mac(req: MacIdReq):
         raise HTTPException(400, "Geçerli mac_id yok")
     try:
         raw = _fetch(f"https://arsiv.mackolik.com/AjaxHandlers/IddaaHandler.aspx?command=morebets&mac={mac_id}&type=ByLeague")
-        name, bulletin = _morebets_bulletin(raw)
+        name, bulletin = _morebets_bulletin(raw, mac_id)
         title = (req.title or name or "").strip()
         if not bulletin or len(bulletin) < 20:
             raise ValueError("bülten boş")
