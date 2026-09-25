@@ -132,8 +132,8 @@ tr:hover td{background:rgba(228,201,138,.04)}
   <header class="mast">
     <div>
       <h1 class="word">ATA<span>SU</span> <i>Intelligence</i></h1>
-      <div class="meta" id="metaLine">Yükleniyor</div>
-      <a class="b" href="/indir" download="ATASU_5.7.6.zip" style="display:inline-block;margin-top:10px;text-decoration:none">Zip indir</a>
+      <div class="meta" id="metaLine">ATASU</div>
+      <a class="b" href="/indir" download="ATASU_5.7.7.zip" style="display:inline-block;margin-top:10px;text-decoration:none">Zip indir</a>
     </div>
     <nav class="tabs">
       <button class="tab on" data-t="model">Rapor</button>
@@ -291,6 +291,21 @@ function splitYorum(raw){
 function esc(s){
   return String(s||'').replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 }
+async function fetchT(url, opt, ms){
+  const ctl = new AbortController();
+  const t = setTimeout(()=>ctl.abort(), ms||12000);
+  try{
+    const r = await fetch(url, Object.assign({}, opt||{}, {signal: ctl.signal}));
+    const j = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.detail || j.error || ('HTTP '+r.status));
+    return j;
+  }catch(e){
+    if(String(e.name||e)==='AbortError') throw new Error('Zaman doldu. Maçkolik cevap vermedi.');
+    throw e;
+  }finally{
+    clearTimeout(t);
+  }
+}
 function clearAll(){
   ['outModel','outExact','outP6','bulletinBox'].forEach(id=>$(id).innerHTML='');
   $('link').value=''; $('lhQ').value='';
@@ -306,9 +321,7 @@ async function loadBulletin(){
   showTab('bulten');
   try{
     const iso = localISO();
-    const r = await fetch('/api/bulletin?date='+iso);
-    const j = await r.json().catch(()=>({}));
-    if(!r.ok) throw new Error(j.detail || ('HTTP '+r.status));
+    const j = await fetchT('/api/bulletin?date='+iso, null, 15000);
     const rows = j.matches||[];
     if(!rows.length){
       box.innerHTML = '<p class="no">Bugün İddaa programında açık maç yok. ('+esc(j.date||iso)+')</p>';
@@ -610,23 +623,19 @@ async function pingUpdate(){
   }catch(_){}
 }
 pingUpdate();
-setInterval(runUpdate, 15*60*1000);
 
 async function runFilterScan(){
   const box = $('outMasa');
   showTab('masa');
   box.innerHTML = '<p class="mu">Bülten şablonlara vuruluyor…</p>';
   try{
-    const r = await fetch('/api/filter-scan');
-    const j = await r.json();
-    if(!r.ok) throw new Error(j.detail||'tarama yok');
+    const j = await fetchT('/api/filter-scan', null, 20000);
     if(!j.matches||!j.matches.length){
       box.innerHTML = '<p class="no">Şablon oturmadı. Taranan '+ (j.scanned||0) +' / bülten '+(j.bulletin||0)+'.</p>';
       return;
     }
     let html = '<p class="hint">'+j.n+' şablon · bugün '+esc(j.source||'')+' · taranan '+(j.scanned||0)+'</p>';
     j.matches.forEach(m=>{
-      const tags = (m.profiles||[]).map(p=>p.selection+' · '+p.name).join(' | ');
       const o = m.odds||{};
       html += '<div class="verdict go">';
       html += '<div class="kicker">'+(m.time||'')+' · '+(m.date||'')+' · '+esc(m.league||'')+'</div>';
@@ -656,9 +665,7 @@ async function runDesk(){
   box.innerHTML = '<p class="mu">Masa kuruluyor… bülten + yorumcu.</p>';
   showTab('masa');
   try{
-    const r = await fetch('/api/desk?limit=40');
-    const j = await r.json();
-    if(!r.ok) throw new Error(j.detail||'masa yok');
+    const j = await fetchT('/api/desk?limit=40', null, 20000);
     if(!j.matches||!j.matches.length){
       box.innerHTML = '<p class="no">Bugünün İddaa bülteninde şablon oturmadı. ('+esc(j.source||'')+')</p>';
       return;

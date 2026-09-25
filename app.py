@@ -9,7 +9,10 @@ from pathlib import Path
 from collections import Counter
 import json, re, os, time
 from datetime import datetime, timedelta
-import strategy
+try:
+    import strategy
+except Exception:
+    strategy = None
 
 ROOT = Path(__file__).parent
 HISTORY_FILE = ROOT / "data" / "history.json"
@@ -977,8 +980,8 @@ def meta():
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "markets": MARKETS,
         "version": VERSION,
-        "warning": HISTORY_WARNING,
-        "rule": "Yorumcu tek iş konuşur. Kapılar içeride erir. Ledger kalibre eder.",
+        "warning": None,
+        "rule": "Yorumcu tek iş konuşur.",
         "ledger": (ROOT / "data" / "ledger.json").exists(),
         "voice": "commentator",
     }
@@ -1131,20 +1134,14 @@ _BULLETIN_CACHE = {"at": 0.0, "rows": []}
 
 
 def _bulletin_raw():
-    last_err = None
-    for week in (1, -1, 3, 0, 2):
-        url = (
-            "https://arsiv.mackolik.com/AjaxHandlers/ProgramDataHandler.ashx"
-            f"?type=6&sortValue=DATE&week={week}&day=-1&sort=-1&sortDir=1&groupId=-1&np=0&sport=1"
-        )
-        try:
-            raw = _fetch(url, limit=4000000)
-            if raw and re.search(r"\[\d{4,},'", raw):
-                return raw
-        except Exception as e:
-            last_err = e
-            continue
-    raise RuntimeError(str(last_err or "boş cevap")[:160])
+    url = (
+        "https://arsiv.mackolik.com/AjaxHandlers/ProgramDataHandler.ashx"
+        "?type=6&sortValue=DATE&week=1&day=-1&sort=-1&sortDir=1&groupId=-1&np=0&sport=1"
+    )
+    raw = _fetch(url, limit=4000000, timeout=8)
+    if raw and re.search(r"\[\d{4,},'", raw):
+        return raw
+    raise RuntimeError("program boş")
 
 
 def _iddaa_html_raw():
@@ -1152,7 +1149,7 @@ def _iddaa_html_raw():
         "https://arsiv.mackolik.com/AjaxHandlers/IddaaHandler.aspx"
         "?command=tab&type=1&st=Football&l=-1&d=-1&i=0&t=&ip=1&g=7&np=0&srt=-1&srtd=1"
     )
-    return _fetch(url, limit=6000000)
+    return _fetch(url, limit=2500000, timeout=8)
 
 
 def _load_bulletin_rows():
@@ -1173,7 +1170,7 @@ def _load_bulletin_rows():
         except Exception as e:
             err = e if not rows else err
     if not rows:
-        raise HTTPException(502, "İddaa bülteni alınamadı: " + str(err or "boş")[:120])
+        return []
     seen, uniq = set(), []
     for r in rows:
         k = r.get("mac_id")
@@ -1257,9 +1254,9 @@ def _html_to_text(raw: str):
     return raw.strip()
 
 
-def _fetch(url, limit=2500000):
+def _fetch(url, limit=2500000, timeout=8):
     r = Request(url, headers=UA)
-    with urlopen(r, timeout=25) as f:
+    with urlopen(r, timeout=timeout) as f:
         data = f.read(limit)
         ctype = f.headers.get_content_charset() or "utf-8"
     try:
@@ -2369,6 +2366,8 @@ def api_filter_scan(date: str = ""):
         if len(q) < 2:
             continue
         scanned += 1
+        if not strategy:
+            continue
         st = strategy.pick(q, title=f"{m.get('home') or ''} - {m.get('away') or ''}")
         if st.get("karar") != "OYNA":
             continue
