@@ -133,7 +133,7 @@ tr:hover td{background:rgba(228,201,138,.04)}
     <div>
       <h1 class="word">ATA<span>SU</span> <i>Intelligence</i></h1>
       <div class="meta" id="metaLine">Yükleniyor</div>
-      <a class="b" href="/indir" download="ATASU_5.7.3.zip" style="display:inline-block;margin-top:10px;text-decoration:none">Zip indir</a>
+      <a class="b" href="/indir" download="ATASU_5.7.4.zip" style="display:inline-block;margin-top:10px;text-decoration:none">Zip indir</a>
     </div>
     <nav class="tabs">
       <button class="tab on" data-t="model">Rapor</button>
@@ -172,7 +172,7 @@ tr:hover td{background:rgba(228,201,138,.04)}
   </section>
   <section id="panel-masa" class="card hidden">
     <p class="kicker">Günlük masa · kuyruk</p>
-    <p class="hint">Bülteni tarar. Şablon tara: TR-FRA / NOR-DEN / BAR-RAC / LEV-BAR / FB-EYP tüm programa vurulur.</p>
+    <p class="hint">Yalnızca İddaa programı. Şablon oturan açık maçlar.</p>
     <div class="btns">
       <button class="g" onclick="runDesk()">Masayı kur</button>
       <button class="b" onclick="runFilterScan()">Şablon tara</button>
@@ -320,11 +320,11 @@ async function loadBulletin(){
       rows = j2.matches||[];
       j = j2;
     }
-    if(!rows.length) throw new Error('Mackolik program boş döndü. Biraz sonra tekrar dene.');
+    if(!rows.length) throw new Error('İddaa programı boş. Biraz sonra tekrar dene.');
     renderBulletin(rows, j.date||iso);
   }catch(e){
     const msg = String(e.message||e);
-    box.innerHTML = '<p class="no">Bülten yok: '+esc(msg)+'</p><p class="hint">Sunucu kapalıysa: uvicorn app:app --port 8000</p>';
+    box.innerHTML = '<p class="no">Bülten yok: '+esc(msg)+'</p>';
   }
 }
 function renderBulletin(rows, label){

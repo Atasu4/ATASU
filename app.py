@@ -8,6 +8,7 @@ from html import unescape
 from pathlib import Path
 from collections import Counter
 import json, re, os, time
+from datetime import datetime, timedelta
 
 ROOT = Path(__file__).parent
 HISTORY_FILE = ROOT / "data" / "history.json"
@@ -984,50 +985,79 @@ def meta():
 
 def _odd(v):
     try:
-        f = float(str(v).replace(",", "."))
+        f = float(str(v).replace(",", ".").strip())
         return f if 1.01 <= f <= 80 else None
     except Exception:
         return None
 
 
+def _csv_fields(blob: str):
+    parts, buf, q = [], "", False
+    for ch in blob or "":
+        if ch == "'":
+            q = not q
+            continue
+        if ch == "," and not q:
+            parts.append(buf)
+            buf = ""
+        else:
+            buf += ch
+    if buf:
+        parts.append(buf)
+    return parts
+
+
+def _istanbul_today():
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo("Europe/Istanbul"))
+    except Exception:
+        now = datetime.utcnow() + timedelta(hours=3)
+    return now.strftime("%d.%m.%Y"), now.strftime("%Y-%m-%d")
+
+
 def _parse_program_rows(raw: str):
     rows = []
     for m in re.finditer(
-        r"\[(\d+),'((?:\\'|[^'])*)',\d+,'((?:\\'|[^'])*)','?\d+'?,\d+,'(\d+:\d+)','(\d{2}\.\d{2}\.\d{4})'(?:,(.*?))?\](?=,\[|\]|\})",
-        raw,
+        r"\[(\d{4,}),'((?:\\'|[^'])*)',\d+,'((?:\\'|[^'])*)',(.*?)\](?=,\[|\]|\})",
+        raw or "",
     ):
-        mac_id, home, away, time, date_s, rest = m.groups()
-        rest = rest or ""
-        parts = []
-        buf = ""
-        in_q = False
-        for ch in rest:
-            if ch == "'":
-                in_q = not in_q
-                continue
-            if ch == "," and not in_q:
-                parts.append(buf)
-                buf = ""
-            else:
-                buf += ch
-        if buf:
-            parts.append(buf)
-        # parts[0] starts after date field — align with full-row index 8
-        def at(i):
-            j = i - 8
-            return parts[j] if 0 <= j < len(parts) else ""
-
-        league = ""
+        mac_id, home, away, rest = m.groups()
+        parts = _csv_fields(rest)
+        time = date_s = ""
         for p in parts:
-            s = (p or "").strip()
-            if not s or s.isdigit() or re.match(r"^\d+[.,]\d+$", s):
+            if re.fullmatch(r"\d{1,2}:\d{2}", (p or "").strip()):
+                time = p.strip()
+            if re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", (p or "").strip()):
+                date_s = p.strip()
+                break
+        if not date_s:
+            continue
+        # after date: possible FT scores then flags then MS 1/X/2
+        after = []
+        seen_date = False
+        for p in parts:
+            if not seen_date:
+                if re.fullmatch(r"\d{2}\.\d{2}\.\d{4}", (p or "").strip()):
+                    seen_date = True
                 continue
-            if re.fullmatch(r"[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ0-9\-]{1,7}", s):
+            after.append(p)
+        def cell(i):
+            return after[i] if i < len(after) else ""
+        # ProgramData: tarih sonrası 8 boş/flag, sonra MS 1/X/2, sonra 2,5 A/Ü
+        h, d, a = _odd(cell(8)), _odd(cell(9)), _odd(cell(10))
+        u25, o25 = _odd(cell(14)), _odd(cell(15))
+        if h is None or a is None:
+            nums = [_odd(p) for p in after]
+            nums = [x for x in nums if x]
+            if len(nums) >= 3:
+                h, d, a = nums[0], nums[1], nums[2]
+        league = ""
+        for p in after:
+            s = (p or "").strip()
+            if re.fullmatch(r"[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ0-9\-]{1,10}", s):
                 league = s
                 break
-        h, d, a = _odd(at(16)), _odd(at(17)), _odd(at(18))
-        u25, o25 = _odd(at(22)), _odd(at(23))
-        code = at(28)
         rows.append({
             "mac_id": mac_id,
             "home": home.replace("\\'", "'"),
@@ -1035,11 +1065,161 @@ def _parse_program_rows(raw: str):
             "time": time,
             "date": date_s,
             "league": league,
-            "iddaa_code": code if code.isdigit() else None,
             "h": h, "d": d, "a": a, "u25": u25, "o25": o25,
             "morebets": f"https://arsiv.mackolik.com/AjaxHandlers/IddaaHandler.aspx?command=morebets&mac={mac_id}&type=ByLeague",
         })
     return rows
+
+
+def _parse_iddaa_html(html: str):
+    rows = []
+    league = ""
+    date_s = ""
+    # lig başlığı
+    for raw_line in re.split(r"</tr>", html or ""):
+        lm = re.search(r"class=\"[^\"]*iddaa-league[^\"]*\"[^>]*>([^<]+)", raw_line, re.I)
+        if not lm:
+            lm = re.search(r"<td[^>]*colspan=\"\d+\"[^>]*>\s*([^<]{4,80})\s*<", raw_line)
+        if lm:
+            t = re.sub(r"\s+", " ", lm.group(1)).strip()
+            if t and "Kod" not in t and "Maç Sonucu" not in t and len(t) < 80:
+                league = t
+        dm = re.search(r"(\d{2}\.\d{2}\.\d{4})", raw_line)
+        if dm and "İY" in raw_line:
+            date_s = dm.group(1)
+        mid = re.search(r"popMatch\((\d+)", raw_line)
+        if not mid:
+            continue
+        names = re.findall(r"popTeam\(\d+\)'>([^<]+)", raw_line)
+        if len(names) < 2:
+            continue
+        tm = re.search(r">(\d{1,2}:\d{2})<", raw_line)
+        odds = re.search(
+            r"Maç Sonucu'[^\[]*\[(?:'1','X','2'|\"1\",\"X\",\"2\")\][^\[]*\[(?:'|\" )([^'\"]+)(?:'|\"),\s*(?:'|\" )([^'\"]+)(?:'|\"),\s*(?:'|\" )([^'\"]+)(?:'|\" )",
+            raw_line,
+        )
+        if not odds:
+            odds = re.search(
+                r"\['1','X','2'\], \['([^']+)', '([^']+)', '([^']+)'\]",
+                raw_line,
+            )
+        h = d = a = None
+        if odds:
+            h, d, a = _odd(odds.group(1)), _odd(odds.group(2)), _odd(odds.group(3))
+        ou = re.search(
+            r"2,5[^[]*\['Alt','Üst'\], \['([^']+)', '([^']+)'\]",
+            raw_line,
+        )
+        u25 = o25 = None
+        if ou:
+            u25, o25 = _odd(ou.group(1)), _odd(ou.group(2))
+        rows.append({
+            "mac_id": mid.group(1),
+            "home": re.sub(r"\s+", " ", names[0]).strip(),
+            "away": re.sub(r"\s+", " ", names[1]).strip(),
+            "time": tm.group(1) if tm else "",
+            "date": date_s,
+            "league": league,
+            "h": h, "d": d, "a": a, "u25": u25, "o25": o25,
+            "morebets": f"https://arsiv.mackolik.com/AjaxHandlers/IddaaHandler.aspx?command=morebets&mac={mid.group(1)}&type=ByLeague",
+        })
+    return rows
+
+
+_BULLETIN_CACHE = {"at": 0.0, "rows": []}
+
+
+def _bulletin_raw():
+    last_err = None
+    for week in (1, -1, 3, 0, 2):
+        url = (
+            "https://arsiv.mackolik.com/AjaxHandlers/ProgramDataHandler.ashx"
+            f"?type=6&sortValue=DATE&week={week}&day=-1&sort=-1&sortDir=1&groupId=-1&np=0&sport=1"
+        )
+        try:
+            raw = _fetch(url, limit=4000000)
+            if raw and re.search(r"\[\d{4,},'", raw):
+                return raw
+        except Exception as e:
+            last_err = e
+            continue
+    raise RuntimeError(str(last_err or "boş cevap")[:160])
+
+
+def _iddaa_html_raw():
+    url = (
+        "https://arsiv.mackolik.com/AjaxHandlers/IddaaHandler.aspx"
+        "?command=tab&type=1&st=Football&l=-1&d=-1&i=0&t=&ip=1&g=7&np=0&srt=-1&srtd=1"
+    )
+    return _fetch(url, limit=6000000)
+
+
+def _load_bulletin_rows():
+    now = time.time()
+    if _BULLETIN_CACHE["rows"] and now - _BULLETIN_CACHE["at"] < 180:
+        return list(_BULLETIN_CACHE["rows"])
+    rows = []
+    err = None
+    try:
+        rows = _parse_program_rows(_bulletin_raw())
+    except Exception as e:
+        err = e
+    if len(rows) < 10:
+        try:
+            extra = _parse_iddaa_html(_iddaa_html_raw())
+            if extra:
+                rows = extra
+        except Exception as e:
+            err = e if not rows else err
+    if not rows:
+        raise HTTPException(502, "İddaa bülteni alınamadı: " + str(err or "boş")[:120])
+    seen, uniq = set(), []
+    for r in rows:
+        k = r.get("mac_id")
+        if not k or k in seen:
+            continue
+        seen.add(k)
+        uniq.append(r)
+    _BULLETIN_CACHE["at"] = now
+    _BULLETIN_CACHE["rows"] = uniq
+    return list(uniq)
+
+
+@app.get("/api/bulletin")
+def bulletin(date: str = "", include_played: bool = False):
+    """Yalnızca İddaa programı (MS 1/X/2 olan satırlar)."""
+    rows = _load_bulletin_rows()
+    want = ""
+    filtered = rows
+    if date.strip():
+        ds = date.strip()
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", ds):
+            y, mo, d = ds.split("-")
+            want = f"{d}.{mo}.{y}"
+        else:
+            want = ds
+        filtered = [r for r in rows if r.get("date") == want]
+    if not filtered:
+        today, _iso = _istanbul_today()
+        want = today
+        filtered = [r for r in rows if r.get("date") == today]
+    if not filtered:
+        filtered = rows
+        want = "hafta"
+    if not include_played:
+        filtered = [r for r in filtered if r.get("h") and r.get("a")]
+    else:
+        filtered = [r for r in filtered if r.get("h") and r.get("a")]
+    filtered = _sort_bulletin(filtered)
+    return {
+        "ok": True,
+        "source": "İddaa programı",
+        "count": len(filtered),
+        "date": want or "hafta",
+        "sort": "saat",
+        "matches": filtered[:500],
+        "note": None,
+    }
 
 
 def _kick_sort_key(row: dict):
@@ -1059,68 +1239,15 @@ def _sort_bulletin(rows: list) -> list:
     return sorted(rows or [], key=_kick_sort_key)
 
 
-def _bulletin_raw():
-    last_err = None
-    for week in (1, 0, 2):
-        url = (
-            "https://arsiv.mackolik.com/AjaxHandlers/ProgramDataHandler.ashx"
-            f"?type=6&sortValue=DATE&week={week}&day=-1&sort=-1&sortDir=1&groupId=-1&np=0&sport=1"
-        )
-        try:
-            raw = _fetch(url, limit=4000000)
-            if raw and re.search(r"\[\d+,'", raw):
-                return raw
-        except Exception as e:
-            last_err = e
-            continue
-    raise HTTPException(502, "Bülten alınamadı: " + str(last_err or "boş cevap")[:120])
-
-
-@app.get("/api/bulletin")
-def bulletin(date: str = ""):
-    """Iddaa program listesi — resmi API değil."""
-    raw = _bulletin_raw()
-    rows = _parse_program_rows(raw)
-    seen, uniq = set(), []
-    for r in rows:
-        k = r.get("mac_id")
-        if k in seen:
-            continue
-        seen.add(k)
-        uniq.append(r)
-    rows = uniq
-    want = ""
-    filtered = rows
-    if date.strip():
-        ds = date.strip()
-        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", ds):
-            y, mo, d = ds.split("-")
-            want = f"{d}.{mo}.{y}"
-        else:
-            want = ds
-        filtered = [r for r in rows if r["date"] == want]
-        if not filtered:
-            filtered = rows
-            want = (want + " yok · hafta") if want else "hafta"
-    filtered = _sort_bulletin(filtered)
-    return {
-        "ok": True,
-        "source": "Mackolik ProgramDataHandler",
-        "count": len(filtered),
-        "date": want or "hafta",
-        "sort": "saat",
-        "matches": filtered[:500],
-        "note": "Saat sırası. Resmi API değil. Bugün boşsa haftalık liste döner.",
-    }
-
-
 class LinkReq(BaseModel):
     url: str
 
 
 UA = {
-    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "*/*",
     "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.7",
+    "Referer": "https://arsiv.mackolik.com/Iddaa-Programi",
 }
 
 
@@ -2069,54 +2196,38 @@ def api_bankroll_get():
 
 
 @app.get("/api/desk")
-def api_desk(tolerance: float = 0.08, bankroll: float = 1000, limit: int = 16):
-    """Günlük masa: bülteni tara, yorumcu tek cümleyle dizer."""
-    raw = api_oran_scan_bulletin(tolerance=tolerance, bankroll=bankroll, limit=limit)
-    ranked = []
-    for m in raw.get("matches") or []:
-        q = {}
-        for k in ("h", "d", "a", "u25", "o25", "btts"):
-            if m.get(k):
-                q[k] = m[k]
-        if not q:
-            extra = {x.get("key"): x.get("close") for x in (m.get("markets") or []) if x.get("key")}
-            q.update({k: v for k, v in extra.items() if v})
-        s_obj = {"sample_ft": m.get("sample") or 0}
-        for x in m.get("markets") or []:
-            if x.get("name") and x.get("hist") is not None:
-                s_obj[x["name"]] = x["hist"]
-        dc = {}
-        for x in m.get("markets") or []:
-            if x.get("key") == "h":
-                dc["ms1"] = x.get("model")
-            elif x.get("key") == "a":
-                dc["ms2"] = x.get("model")
-            elif x.get("key") == "d":
-                dc["msx"] = x.get("model")
-            elif x.get("key") == "o25":
-                dc["p_o25"] = x.get("model")
-            elif x.get("key") == "btts":
-                dc["p_btts"] = x.get("model")
+def api_desk(tolerance: float = 0.08, bankroll: float = 1000, limit: int = 40):
+    """Masa = İddaa bülteni + şablon. History / yabancı havuz yok."""
+    scan = api_filter_scan("")
+    matches = []
+    for m in scan.get("matches") or []:
+        q = m.get("odds") or {}
         voice = commentator.compose(
-            stats_obj=s_obj,
             q=q,
             title=m.get("title") or f"{m.get('home') or ''} - {m.get('away') or ''}",
-            n=m.get("sample") or 0,
-            lh={"dixon_coles": dc} if dc else {},
-            open_row={x.get("key"): x.get("open") for x in (m.get("markets") or []) if x.get("key")},
+            n=0,
         )
-        m["voice"] = commentator.blurb(voice)
-        m["karar"] = voice.get("karar")
-        m["script"] = voice.get("headline")
-        m["scoreline"] = voice.get("scoreline")
-        m["pick"] = voice.get("pick")
-        ranked.append(m)
-    order = {"OYNA": 0, "BIRIM": 1, "IZLE": 2, "GEC": 3, "IPTAL": 4}
-    ranked.sort(key=lambda x: (order.get(x.get("karar") or "GEC", 9), -((x.get("best") or {}).get("ev") or -9)))
-    raw["matches"] = ranked
-    raw["desk"] = True
-    raw["version"] = VERSION
-    return raw
+        matches.append({
+            **m,
+            "kickoff": m.get("time"),
+            "karar": voice.get("karar"),
+            "script": voice.get("headline"),
+            "voice": commentator.blurb(voice),
+            "scoreline": voice.get("scoreline"),
+            "pick": voice.get("pick"),
+        })
+    return {
+        "ok": True,
+        "desk": True,
+        "iddaa_only": True,
+        "n": len(matches),
+        "history_n": len(HISTORY),
+        "bulletin": scan.get("bulletin"),
+        "source": scan.get("source"),
+        "error": scan.get("error"),
+        "matches": matches[: max(1, min(int(limit or 40), 80))],
+        "version": VERSION,
+    }
 
 
 class OranScanReq(_BM):
