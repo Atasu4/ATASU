@@ -1,3 +1,15 @@
+# ATASU 5.7.0
+
+- Yorumcu tek ses: kapı listesi içeride kalır, dışarıda maç tahmini
+- Masa kuyruğu `/api/desk` — OYNA / IZLE / GEC sırası
+- Ledger kalibrasyon + kasa tavanı + aynı maç kilidi
+- Canlı 60–75 IPTAL
+- Understat xG (büyük 5) + Opta/proxy
+- Derbi / şehir / haber bağlamı
+- Açılış–kapanış drift harvest
+- İsim katmanı (BJK/GS/FB, Man City…)
+- Sürüm tek yerde `version.py`
+
 # ATASU 5.6.0
 
 - Oran sekmesi: bülten taraması + benzer oran hit + EV + yarım Kelly
@@ -8,26 +20,3 @@
 
 - Opta npxG resmi alan veya SoT/sut proxy
 - Tercih / banko / coach / pipeline / Detay baglandi
-
-# ATASU 5.5.0
-
-- Tercih: Wilson alt bant (%52), kupon 1.30–2.20, MS1 / 2.5Ü / KG öncelik
-- OYNA = yarım Kelly; küçük n cezası
-- AI coach brief cevabına bağlandı (kural metni; API anahtarı varsa LLM)
-- Pipeline 1.1: tablo λ + Opta SOT proxy + fd.csv bayrağı
-- Sürüm tek yerde 5.5.0 (app / meta / update)
-
-# ATASU 5.2.2
-
-- POST /api/update: cache sil + biten maç hasadı
-- UI Güncelle + 15 dk otomatik
-
-# ATASU 5.2.1
-
-- Derin lig analizi: ev-iç / dep-dış gol gücü → eşleşme λ
-- Taraf 2.5Ü ve KG, Opta, İY/MS
-
-# ATASU 5.2.0
-
-- Maçkolik Puan-Durumu entegrasyonu
-- Tercih yalnızca açık iddaa piyasaları

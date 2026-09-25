@@ -32,7 +32,6 @@ if not HISTORY_WARNING and not HISTORY:
     HISTORY_WARNING = "history.json boş. POST /api/update veya football-data hasadı çalıştır."
 
 MARKETS = ["h", "d", "a", "u25", "o25", "btts", "nobtts", "u35", "o35", "iyu15", "iyo15", "g6", "g45", "g01", "g23"]
-HTFT_KEYS = ["ht11", "ht1x", "ht12", "htx1", "htxx", "htx2", "ht21", "ht2x", "ht22"]
 NAMES = {
     "h": "MS 1", "d": "MS X", "a": "MS 2",
     "u25": "2,5 Alt", "o25": "2,5 Üst",
@@ -61,7 +60,16 @@ from updater import run_update, remember_season, _load_state
 from extra_feeds import lookup as fd_lookup
 from pipeline import build_pipeline, lines_from_pipeline
 from banko import evaluate as banko_evaluate, lines as banko_lines
-from htft_filter import evaluate_odds as htft_evaluate, lines as htft_lines
+from version import VERSION
+import commentator
+import ledger_book
+import live_desk
+import context_layer
+import xg_layer
+try:
+    from mackolik_news import collect as news_collect
+except Exception:
+    news_collect = None
 try:
     from ai_coach import compose as coach_compose
 except Exception:
@@ -80,8 +88,24 @@ def _standing(home, away="", league=""):
         pack = {"ok": False, "home": home, "away": away}
     pack["extra"] = extra
     try:
+        pack = xg_layer.enrich(pack, home or "", away or "", league or "")
+    except Exception:
+        pass
+    news = None
+    try:
+        if news_collect:
+            news = news_collect(home or "", away or "", pack)
+            pack["news"] = news
+    except Exception as e:
+        pack["news"] = {"ok": False, "note": str(e)[:80]}
+        news = pack["news"]
+    try:
+        pack["context"] = context_layer.build(home or "", away or "", standing=pack, news=news)
+    except Exception as e:
+        pack["context"] = {"ok": False, "note": str(e)[:80]}
+    try:
         pack["pipeline"] = build_pipeline(
-            home or "", away or "", standing=pack, extra=extra, league=league or ""
+            home or "", away or "", standing=pack, extra=extra, league=league or "", news=news
         )
     except Exception as e:
         pack["pipeline"] = {"ok": False, "note": str(e)[:80]}
@@ -104,7 +128,7 @@ def _standing(home, away="", league=""):
     return pack
 
 
-app = FastAPI(title="ATASU Intelligence", version="5.6.0")
+app = FastAPI(title="ATASU Intelligence", version=VERSION)
 WEIGHTS = {
     "h": 1.2, "d": 1.0, "a": 1.2,
     "u25": 1.1, "o25": 1.1,
@@ -1192,7 +1216,7 @@ def root():
 def indir_zip():
     candidates = [
         ROOT / "ATASU.zip",
-        Path("/workspace/artifacts/ATASU_5.6.1.zip"),
+        Path("/workspace/artifacts/ATASU_5.7.0.zip"),
     ]
     p = next((c for c in candidates if c.exists()), None)
     if p is None:
@@ -1200,7 +1224,7 @@ def indir_zip():
     return FileResponse(
         p,
         media_type="application/zip",
-        filename="ATASU_5.6.1.zip",
+        filename=f"ATASU_{VERSION}.zip",
         content_disposition_type="attachment",
     )
 
@@ -1211,10 +1235,11 @@ def meta():
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "markets": MARKETS,
-        "version": "5.6.0",
+        "version": VERSION,
         "warning": HISTORY_WARNING,
-        "rule": "Yalnızca history.json içindeki gerçek oran ve sonuçlar kullanılır. Puan durumu Maçkolik arşivinden çekilir.",
+        "rule": "Yorumcu tek iş konuşur. Kapılar içeride erir. Ledger kalibre eder.",
         "ledger": (ROOT / "data" / "ledger.json").exists(),
+        "voice": "commentator",
     }
 
 
@@ -1373,14 +1398,10 @@ def _extract_mac_id(url, body=""):
     return None
 
 
-def _morebets_bulletin(raw: str, mac_id: str = ""):
+def _morebets_bulletin(raw: str):
     m = re.search(r'Match:"([^"]+)"', raw) or re.search(r'"Match"\s*:\s*"([^"]+)"', raw)
     name = m.group(1) if m else ""
-    code = re.sub(r"\D", "", str(mac_id or ""))
-    if len(code) < 3:
-        code = "10000"
     lines = [name] if name else []
-    paste = []
     wanted = {
         "Maç Sonucu": "ms",
         "2,5 Alt/Üst": "25",
@@ -1393,34 +1414,14 @@ def _morebets_bulletin(raw: str, mac_id: str = ""):
         "İlk Gol": "ilk",
         "İlk Korner": "korner",
         "Toplam Gol Aralığı": "range",
-        "İlk Yarı / Maç Sonucu": "iyms",
-        "İY/MS": "iyms",
-        "1. Yarı / Maç Sonucu": "iyms",
-        "Half Time / Full Time": "iyms",
-        "HT/FT": "iyms",
-        "1. Yarı Sonucu": "iy",
-        "Tek/Çift": "oc",
-        "Korner Tek/Çift": "koc",
-        "Daha Çok Gol Olacak Yarı": "dcgy",
-        "Evsahibi 0,5 Alt/Üst": "ev05",
-        "Deplasman 0,5 Alt/Üst": "dep05",
-        "Maç Sonucu ve (4,5) Alt/Üst": "ms45",
-        "1,5 Alt/Üst": "15",
     }
     sov_au = []
     for mm in re.finditer(r'"MarketType":\{"Id":\d+,"Name":"([^"]+)","Title":"[^"]+"\}.*?"Outcomes":\[(.*?)\]', raw):
         title, blob = mm.group(1), mm.group(2)
         outs = re.findall(r'"OutcomeName":"([^"]+)","Odd":([0-9.]+)', blob)
-        kind = wanted.get(title)
-        if not kind and re.search(r"yar[ıi]\s*/\s*ma[cç]|i[yÿ]/ms|ht\s*/\s*ft|half\s*time\s*/\s*full", title, re.I):
-            kind = "iyms"
-        if outs:
-            paste.append(f"{title}{code}")
-            for a, b in outs:
-                paste.append(a)
-                paste.append(b)
-        if not kind:
+        if not outs or title not in wanted:
             continue
+        kind = wanted[title]
         d = {a: b for a, b in outs}
         if kind == "ms" and all(k in d for k in ("1", "X", "2")):
             lines.append(f"Maç Sonucu {d['1']} {d['X']} {d['2']}")
@@ -1450,43 +1451,11 @@ def _morebets_bulletin(raw: str, mac_id: str = ""):
                 lines.append(f"4,5 Alt/Üst proxy g45 {g['4-5']}")
             if "6+" in g:
                 lines.append(f"6+ Gol {g['6+']}")
-            if "2-3" in g:
-                lines.append(f"Toplam Gol Aralığı 2-3 Gol {g['2-3']}")
-            if "0-1" in g:
-                lines.append(f"Toplam Gol Aralığı 0-1 Gol {g['0-1']}")
-        elif kind == "iy" and all(k in d for k in ("1", "X", "2")):
-            lines.append(f"1. Yarı Sonucu {d['1']} {d['X']} {d['2']}")
-        elif kind == "oc" and "Tek" in d:
-            lines.append(f"Tek/Çift Tek {d['Tek']}" + (f" Çift {d.get('Çift','')}" if d.get("Çift") else ""))
-        elif kind == "koc" and "Tek" in d:
-            lines.append(f"Korner Tek/Çift Tek {d['Tek']}")
-        elif kind == "dcgy":
-            bits = " ".join(f"{k} {v}" for k, v in outs)
-            lines.append("Daha Çok Gol Olacak Yarı " + bits)
-        elif kind == "15" and "Üst" in d:
-            lines.append(f"1,5 Alt/Üst {d.get('Alt','')} {d['Üst']}")
-        elif kind == "iyms":
-            order = ["1/1", "1/X", "1/2", "X/1", "X/X", "X/2", "2/1", "2/X", "2/2"]
-            got = []
-            for lab in order:
-                if lab in d:
-                    got.append(f"{lab} {d[lab]}")
-            if "1/1" in d and "X/1" in d:
-                lines.append("İY/MS " + " ".join(got))
-                for lab in order:
-                    if lab in d:
-                        lines.append(f"{lab}\n{d[lab]}")
     sov_au.sort()
     if sov_au and not any(x.startswith("4,5 Alt/Üst ") for x in lines):
         _, a, u = sov_au[0]
         lines.append(f"4,5 Alt/Üst {a} {u}")
-    compact = "\n".join(lines).strip()
-    block = "\n".join(paste).strip()
-    if block:
-        text = (compact + "\n\n" + block).strip()
-    else:
-        text = compact
-    return name, text
+    return name, "\n".join(lines).strip()
 
 
 @app.post("/api/match-link")
@@ -1512,7 +1481,7 @@ def match_link(req: LinkReq):
         if mac_id:
             try:
                 raw = _fetch(f"https://arsiv.mackolik.com/AjaxHandlers/IddaaHandler.aspx?command=morebets&mac={mac_id}&type=ByLeague")
-                name, bulletin = _morebets_bulletin(raw, mac_id)
+                name, bulletin = _morebets_bulletin(raw)
                 if name and not title:
                     title = name
                 if bulletin:
@@ -1547,7 +1516,7 @@ def from_mac(req: MacIdReq):
         raise HTTPException(400, "Geçerli mac_id yok")
     try:
         raw = _fetch(f"https://arsiv.mackolik.com/AjaxHandlers/IddaaHandler.aspx?command=morebets&mac={mac_id}&type=ByLeague")
-        name, bulletin = _morebets_bulletin(raw, mac_id)
+        name, bulletin = _morebets_bulletin(raw)
         title = (req.title or name or "").strip()
         if not bulletin or len(bulletin) < 20:
             raise ValueError("bülten boş")
@@ -1571,7 +1540,7 @@ def from_mac(req: MacIdReq):
 def selftest():
     return {
         "ok": True,
-        "version": "5.6.0",
+        "version": VERSION,
         "history_rows": len(HISTORY),
         "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
         "endpoints": ["/api/match-link", "/api/odds", "/api/exact-odds", "/api/plus6", "/api/betwatch"],
@@ -2067,7 +2036,11 @@ def narrative_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, l
 
 
 def compact_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, lh=None, standing=None):
-    return narrative_yorum(s, matches, title, league, q, bw, p6, lh, standing)
+    pack = commentator.compose(
+        standing=standing, lh=lh, stats_obj=s, q=q or {}, title=title, n=s.get("sample_ft") or 0,
+        p6=p6, news=(standing or {}).get("news"), context=(standing or {}).get("context"),
+    )
+    return commentator.wrap_yorum(pack)
     q = q or {}
     n = s.get("sample_ft") or 0
     ev, dep = _parse_teams(title)
@@ -2344,61 +2317,33 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
     bw = betwatch_find(match_title, q=q)
     bw["signals"] = money_signals(s, bw.get("overlay"), q)
     lh = lh_style_engine(q, s, standing)
-    yorum = compact_yorum(
-        s, matches, title=match_title or title, league=league, q=q, bw=bw, p6=p6, lh=lh, standing=standing,
+    voice = commentator.compose(
+        standing=standing, lh=lh, stats_obj=s, q=q, title=match_title or title,
+        n=n, p6=p6, news=(standing or {}).get("news"),
+        context=(standing or {}).get("context"),
+        open_row={k: q.get("open_" + k) for k in ("h", "d", "a", "o25", "u25", "btts")},
     )
+    yorum = commentator.wrap_yorum(voice)
     open_rank = score_open_picks(q, s, lh, standing)
-    htft = None
-    try:
-        htft = htft_evaluate(q)
-    except Exception:
-        htft = None
-    if htft:
-        extra_h = "\n".join(htft_lines(htft))
-        if "[[ATASU_TERCIH]]" in yorum:
-            yorum = yorum.replace("[[ATASU_TERCIH]]", extra_h + "\n\n[[ATASU_TERCIH]]", 1)
-        else:
-            yorum = yorum + "\n" + extra_h
-    banko = None
-    if open_rank:
-        banko = banko_evaluate(open_rank[0], n, standing=standing, lh=lh, stats_obj=s)
-        if banko and banko.get("need"):
-            extra_b = "\n".join(banko_lines(banko))
-            if "[[ATASU_TERCIH]]" in yorum:
-                yorum = yorum.replace("[[ATASU_TERCIH]]", extra_b + "\n\n[[ATASU_TERCIH]]", 1)
-            else:
-                yorum = yorum + "\n" + extra_b
-    coach = None
-    if coach_compose:
-        try:
-            coach = coach_compose({
-                "standing": standing, "lh": lh, "stats": s,
-                "sample": n, "matched": len(matches), "yorum": yorum,
-            }, standing)
-        except Exception as e:
-            coach = {"ok": False, "note": str(e)[:80]}
-    if banko and banko.get("karar") == "OYNA":
-        try:
-            led = ROOT / "data" / "ledger.json"
-            rows = json.loads(led.read_text(encoding="utf-8")) if led.exists() else []
-            pk = (banko.get("pick") or {})
-            rows.append({
-                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "title": match_title,
-                "pick": pk.get("name") or "",
-                "odds": pk.get("odds"),
-                "karar": "OYNA",
-                "label": banko.get("label"),
-                "settled": None,
-                "auto": True,
-            })
-            led.parent.mkdir(parents=True, exist_ok=True)
-            led.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
-        except Exception:
-            pass
+    banko = voice.get("banko")
+    coach = {
+        "ok": True,
+        "engine": "atasu-commentator-5.7",
+        "text": voice.get("script"),
+        "stance": voice.get("stance"),
+        "headline": voice.get("headline"),
+    }
+    if voice.get("karar") == "OYNA" and voice.get("pick"):
+        pk = voice["pick"]
+        ticket = ledger_book.allow_ticket(match_title, None)
+        if ticket.get("ok"):
+            ledger_book.log_pick(
+                match_title, pk.get("name"), pk.get("odds"), "OYNA",
+                label=voice.get("karar"), extra={"blend": pk.get("blend"), "ev": pk.get("ev")},
+            )
     return {
         "title": title,
-        "text": " ".join(lines),
+        "text": voice.get("headline") or " ".join(lines),
         "sample": n,
         "stats": s,
         "plus6": p6,
@@ -2407,6 +2352,7 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
         "pool_size": len(pool),
         "matches": matches[:limit],
         "yorum": yorum,
+        "commentator": voice,
         "betwatch": bw,
         "lh_model": lh,
         "standing": standing,
@@ -2414,8 +2360,13 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
         "banko": banko,
         "open_markets": [{"key": k, "name": n, "odds": o} for k, n, o in open_markets(q)],
         "open_picks": open_rank,
-        "htft": htft,
-        "version": "5.6.1",
+        "version": VERSION,
+        "sources": {
+            "standing": bool((standing or {}).get("ok")),
+            "news": bool(((standing or {}).get("news") or {}).get("ok")),
+            "xg": ((standing or {}).get("analysis") or {}).get("npxg_src"),
+            "history": n,
+        },
     }
 
 
@@ -2495,7 +2446,7 @@ def plus6(q: Plus6Req):
 def brief(req: OddsReq):
     q = {}
     for k, v in req.odds.items():
-        if k not in MARKETS and k not in ("iy05", "nofirst", "o45") and k not in HTFT_KEYS:
+        if k not in MARKETS and k not in ("iy05", "nofirst", "o45"):
             continue
         try:
             f = float(v)
@@ -2543,7 +2494,7 @@ def api_update():
         out = run_update(HISTORY)
         HISTORY = json.loads(HISTORY_FILE.read_text(encoding="utf-8")) if HISTORY_FILE.exists() else HISTORY
         out["history_n"] = len(HISTORY)
-        out["version"] = "5.2.3"
+        out["version"] = VERSION
         return out
     except Exception as e:
         raise HTTPException(502, "Güncelleme alınamadı: " + str(e)[:160])
@@ -2553,7 +2504,7 @@ def api_update():
 def api_update_status():
     st = _load_state()
     return {
-        "version": "5.5.0",
+        "version": VERSION,
         "history_n": len(HISTORY),
         "last": st.get("last"),
         "added_total": st.get("added"),
@@ -2572,41 +2523,15 @@ class LiveWinReq(_BM):
     home: str = ""
     away: str = ""
     o25: float | None = None
+    pick_key: str | None = None
+    pre_karar: str = ""
 
 
 @app.post("/api/live-window")
 def api_live_window(req: LiveWinReq):
-    m = req.minute
-    alert = None
-    note = "Pre-match banko canlida iptal edilebilir."
-    if m is None:
-        return {"ok": False, "note": "dakika yok"}
-    if 60 <= m <= 75:
-        alert = "60-75 pencere"
-        note = "Ikinci yari tempo. 0-0 / 1-0 ise late 2.5U veya 2.Y gol bak; favori kilitlendiyse cekil."
-    elif m >= 80:
-        alert = "gec"
-        note = "Yeni pre-match banko acma."
-    return {
-        "ok": True,
-        "minute": m,
-        "score": req.score,
-        "alert": alert,
-        "note": note,
-        "window_60_75": bool(m is not None and 60 <= m <= 75),
-    }
-
-
-LEDGER = ROOT / "data" / "ledger.json"
-
-
-def _ledger_load():
-    if LEDGER.exists():
-        try:
-            return json.loads(LEDGER.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return []
+    pack = live_desk.read(req.minute, req.score, pick_key=req.pick_key, pre_karar=req.pre_karar)
+    pack["version"] = VERSION
+    return pack
 
 
 class LedgerReq(_BM):
@@ -2615,36 +2540,73 @@ class LedgerReq(_BM):
     odds: float | None = None
     karar: str = ""
     label: str = ""
-    settled: str | None = None  # HIT / MISS
+    settled: str | None = None
+    bank: float | None = None
 
 
 @app.post("/api/ledger")
 def api_ledger(req: LedgerReq):
-    rows = _ledger_load()
-    rows.append({
-        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "title": req.title,
-        "pick": req.pick,
-        "odds": req.odds,
-        "karar": req.karar,
-        "label": req.label,
-        "settled": req.settled,
-    })
-    LEDGER.parent.mkdir(parents=True, exist_ok=True)
-    LEDGER.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
-    hits = sum(1 for r in rows if r.get("settled") == "HIT")
-    miss = sum(1 for r in rows if r.get("settled") == "MISS")
-    n = hits + miss
-    return {"ok": True, "n": len(rows), "settled": n, "hit_pct": round(100 * hits / n, 1) if n else None}
+    if req.bank is not None:
+        ledger_book.set_bankroll(req.bank)
+    if req.title or req.pick:
+        ledger_book.log_pick(req.title, req.pick, req.odds, req.karar or "OYNA", req.label)
+    return ledger_book.summary()
 
 
 @app.get("/api/ledger")
 def api_ledger_get():
-    rows = _ledger_load()
-    hits = sum(1 for r in rows if r.get("settled") == "HIT")
-    miss = sum(1 for r in rows if r.get("settled") == "MISS")
-    n = hits + miss
-    return {"ok": True, "rows": rows[-80:], "hit_pct": round(100 * hits / n, 1) if n else None, "settled": n}
+    return ledger_book.summary()
+
+
+class BankReq(_BM):
+    bank: float | None = None
+    max_same_day: int | None = None
+    max_fraction: float | None = None
+
+
+@app.post("/api/bankroll")
+def api_bankroll(req: BankReq):
+    return ledger_book.set_bankroll(req.bank, max_same_day=req.max_same_day, max_fraction=req.max_fraction)
+
+
+@app.get("/api/bankroll")
+def api_bankroll_get():
+    s = ledger_book.summary()
+    s["version"] = VERSION
+    return s
+
+
+@app.get("/api/desk")
+def api_desk(tolerance: float = 0.08, bankroll: float = 1000, limit: int = 16):
+    """Günlük masa: bülteni tara, yorumcu tek cümleyle dizer."""
+    raw = api_oran_scan_bulletin(tolerance=tolerance, bankroll=bankroll, limit=limit)
+    ranked = []
+    for m in raw.get("matches") or []:
+        q = {}
+        for k in ("h", "d", "a", "u25", "o25", "btts"):
+            if m.get(k):
+                q[k] = m[k]
+        if not q:
+            extra = {x.get("key"): x.get("close") for x in (m.get("markets") or []) if x.get("key")}
+            q.update({k: v for k, v in extra.items() if v})
+        s_obj = {"sample_ft": m.get("sample") or 0}
+        if m.get("sample"):
+            s_obj["2,5 Üst"] = next((x.get("hist") for x in (m.get("markets") or []) if x.get("key") == "o25"), None)
+        voice = commentator.compose(
+            stats_obj=s_obj, q=q, title=m.get("title") or "", n=m.get("sample") or 0,
+            open_row={x.get("key"): x.get("open") for x in (m.get("markets") or []) if x.get("key")},
+        )
+        m["voice"] = commentator.blurb(voice)
+        m["karar"] = voice.get("karar")
+        m["script"] = voice.get("headline")
+        m["scoreline"] = voice.get("scoreline")
+        ranked.append(m)
+    order = {"OYNA": 0, "IZLE": 1, "GEC": 2, "IPTAL": 3}
+    ranked.sort(key=lambda x: (order.get(x.get("karar") or "GEC", 9), -((x.get("best") or {}).get("ev") or -9)))
+    raw["matches"] = ranked
+    raw["desk"] = True
+    raw["version"] = VERSION
+    return raw
 
 
 class OranScanReq(_BM):
@@ -2656,14 +2618,14 @@ class OranScanReq(_BM):
 
 def _odds_from_row(m: dict) -> dict:
     q = {}
-    for k in list(MARKETS) + HTFT_KEYS:
+    for k in MARKETS:
         v = _odd(m.get(k))
         if v:
             q[k] = v
     extra = m.get("odds") if isinstance(m.get("odds"), dict) else {}
     for k, v in extra.items():
         vv = _odd(v)
-        if vv and (k in MARKETS or k in HTFT_KEYS or k in ("iy05", "nofirst", "o45")):
+        if vv and (k in MARKETS or k in ("iy05", "nofirst", "o45")):
             q[k] = vv
     return q
 
@@ -2697,11 +2659,6 @@ def scan_one_oran(m: dict, tol: float, bankroll: float) -> dict:
         lh = {}
     ranked = score_open_picks(q, s, lh, None)
     banko = banko_evaluate(ranked[0], n, standing=None, lh=lh, stats_obj=s) if ranked else None
-    htft = None
-    try:
-        htft = htft_evaluate(q)
-    except Exception:
-        htft = None
     rows = []
     for p in ranked:
         odd = p.get("odds")
@@ -2740,9 +2697,9 @@ def scan_one_oran(m: dict, tol: float, bankroll: float) -> dict:
         "sample": n,
         "fallback": fallback,
         "banko": banko,
-        "htft": htft,
         "best": rows[0] if rows else None,
         "markets": rows,
+        "voice": None,
     }
 
 
@@ -2753,7 +2710,7 @@ def api_oran_scan(req: OranScanReq):
     out.sort(key=lambda x: ((x.get("best") or {}).get("ev") or -9), reverse=True)
     return {
         "ok": True,
-        "version": "5.6.0",
+        "version": VERSION,
         "history_n": len(HISTORY),
         "n": len(out),
         "bankroll": req.bankroll,

@@ -36,12 +36,11 @@ LEAGUE_FILES = {
 }
 
 
+import names
+
+
 def _norm(s: str) -> str:
-    s = (s or "").lower()
-    tr = str.maketrans("çğıöşüâîû", "cgiosuaiu")
-    s = s.translate(tr)
-    s = re.sub(r"[^a-z0-9]+", " ", s)
-    return re.sub(r"\s+", " ", s).strip()
+    return names.fold(s)
 
 
 def _get(url: str, timeout=18) -> bytes:
@@ -111,6 +110,11 @@ def load_league(code: str) -> list[dict]:
             "b365a": _f(row.get("B365CA") or row.get("B365A")),
             "b365o25": _f(row.get("B365C>2.5") or row.get("B365>2.5") or row.get("BbAv>2.5")),
             "b365u25": _f(row.get("B365C<2.5") or row.get("B365<2.5")),
+            "open_h": _f(row.get("B365H")),
+            "open_d": _f(row.get("B365D")),
+            "open_a": _f(row.get("B365A")),
+            "open_o25": _f(row.get("B365>2.5")),
+            "open_u25": _f(row.get("B365<2.5")),
             "hh": _i(row.get("HTHG")),
             "ha": _i(row.get("HTAG")),
         })
@@ -142,17 +146,7 @@ def _all_rows() -> list[dict]:
 
 
 def _score_name(q: str, name: str) -> float:
-    qn, nn = _norm(q), _norm(name)
-    if not qn or not nn:
-        return 0.0
-    if qn == nn:
-        return 1.0
-    if qn in nn or nn in qn:
-        return 0.82
-    qt, nt = set(qn.split()), set(nn.split())
-    if not qt or not nt:
-        return 0.0
-    return len(qt & nt) / len(qt | nt)
+    return names.score(q, name)
 
 
 def lookup(home: str, away: str, league: str = "") -> dict:

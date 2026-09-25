@@ -65,6 +65,13 @@ def _tokens(s: str) -> set[str]:
 
 
 def _name_score(query: str, cand: str) -> float:
+    try:
+        import names
+        s = names.score(query, cand)
+        if s:
+            return s
+    except Exception:
+        pass
     q, c = _fold(query), _fold(cand)
     if not q or not c:
         return 0.0

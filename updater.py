@@ -219,6 +219,13 @@ def harvest_football_data(history: list[dict]) -> int:
                 "res_g6": int(hg + ag >= 6),
                 "src": "fd.co.uk",
                 "fd_season": SEASON,
+                "open": {
+                    "h": r.get("open_h"),
+                    "d": r.get("open_d"),
+                    "a": r.get("open_a"),
+                    "o25": r.get("open_o25"),
+                    "u25": r.get("open_u25"),
+                },
             }
             k = _key(row)
             if k in seen:
@@ -257,8 +264,17 @@ def settle_ledger(history: list[dict]) -> dict:
             continue
         # latest matching teams
         cand = None
+        try:
+            import names as _nm
+        except Exception:
+            _nm = None
         for r in reversed(history):
-            if fold(r.get("home")) == fold(home) and fold(r.get("away")) == fold(away) and r.get("ft"):
+            if not r.get("ft"):
+                continue
+            if _nm and _nm.same(r.get("home") or "", home, 0.78) and _nm.same(r.get("away") or "", away, 0.78):
+                cand = r
+                break
+            if fold(r.get("home")) == fold(home) and fold(r.get("away")) == fold(away):
                 cand = r
                 break
         if not cand:
