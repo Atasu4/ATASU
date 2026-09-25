@@ -720,6 +720,7 @@ const PRESETS = {
   ],
 };
 function loadPreset(key){
+  refRows = [];
   (PRESETS[key]||[]).forEach(([m,o,v])=>refRows.push({market:m,outcome:o,values:v}));
   renderRef();
 }
@@ -742,13 +743,13 @@ function parseMatches(raw){
     if(hm){
       const name = hm[1].trim();
       const code = hm[2];
-      if(norm(name)===norm('Maç Sonucu')){
-        current = {code, name, markets:{}};
-        matches.push(current);
-      }
-      if(!current){
-        current = {code:code, name:'(isimsiz)', markets:{}};
-        matches.push(current);
+      if(norm(name)===norm('Maç Sonucu') || !current){
+        const existing = matches.find(x => String(x.code)===String(code));
+        if(existing) current = existing;
+        else {
+          current = {code, name, markets:{}};
+          matches.push(current);
+        }
       }
       currentMarket = name;
       current.markets[currentMarket] = current.markets[currentMarket] || {};
@@ -802,8 +803,12 @@ function runAnalysis(){
     const oneXTwo = m.markets[Object.keys(m.markets).find(k=>norm(k)===norm('Maç Sonucu'))||''] || {};
     const sonucStr = ['1','X','2'].map(k=>oneXTwo[k]).filter(Boolean).join(' / ');
     let rowsHtml = '';
+    const seenRef = {};
     refRows.forEach(r=>{
       if(!r.market || !r.outcome || !String(r.values||'').trim()) return;
+      const rk = norm(r.market)+'|'+norm(r.outcome)+'|'+String(r.values);
+      if(seenRef[rk]) return;
+      seenRef[rk] = 1;
       const refVals = String(r.values).split(',').map(s=>toNum(s)).filter(v=>v!==null);
       const rawMatchVal = findValue(m.markets, r.market, r.outcome);
       const matchVal = toNum(rawMatchVal);
@@ -986,6 +991,8 @@ async function pullKarsilastirMatch(m){
     const j = await r.json();
     if(!r.ok) throw new Error(j.detail||'oran yok');
     $('matchInput').value = j.text||'';
+    $('results').innerHTML = '';
+    $('htftResults').innerHTML = '';
     if(!refRows.length) loadPreset('sistem1');
     runAnalysis();
     runHTFT();
