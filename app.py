@@ -32,6 +32,7 @@ if not HISTORY_WARNING and not HISTORY:
     HISTORY_WARNING = "history.json boş. POST /api/update veya football-data hasadı çalıştır."
 
 MARKETS = ["h", "d", "a", "u25", "o25", "btts", "nobtts", "u35", "o35", "iyu15", "iyo15", "g6", "g45", "g01", "g23"]
+HTFT_KEYS = ["ht11", "ht1x", "ht12", "htx1", "htxx", "htx2", "ht21", "ht2x", "ht22"]
 NAMES = {
     "h": "MS 1", "d": "MS X", "a": "MS 2",
     "u25": "2,5 Alt", "o25": "2,5 Üst",
@@ -60,6 +61,7 @@ from updater import run_update, remember_season, _load_state
 from extra_feeds import lookup as fd_lookup
 from pipeline import build_pipeline, lines_from_pipeline
 from banko import evaluate as banko_evaluate, lines as banko_lines
+from htft_filter import evaluate_odds as htft_evaluate, lines as htft_lines
 try:
     from ai_coach import compose as coach_compose
 except Exception:
@@ -1387,14 +1389,21 @@ def _morebets_bulletin(raw: str):
         "İlk Gol": "ilk",
         "İlk Korner": "korner",
         "Toplam Gol Aralığı": "range",
+        "İlk Yarı / Maç Sonucu": "iyms",
+        "İY/MS": "iyms",
+        "1. Yarı / Maç Sonucu": "iyms",
+        "Half Time / Full Time": "iyms",
+        "HT/FT": "iyms",
     }
     sov_au = []
     for mm in re.finditer(r'"MarketType":\{"Id":\d+,"Name":"([^"]+)","Title":"[^"]+"\}.*?"Outcomes":\[(.*?)\]', raw):
         title, blob = mm.group(1), mm.group(2)
         outs = re.findall(r'"OutcomeName":"([^"]+)","Odd":([0-9.]+)', blob)
-        if not outs or title not in wanted:
+        kind = wanted.get(title)
+        if not kind and re.search(r"yar[ıi]\s*/\s*ma[cç]|i[yÿ]/ms|ht\s*/\s*ft|half\s*time\s*/\s*full", title, re.I):
+            kind = "iyms"
+        if not outs or not kind:
             continue
-        kind = wanted[title]
         d = {a: b for a, b in outs}
         if kind == "ms" and all(k in d for k in ("1", "X", "2")):
             lines.append(f"Maç Sonucu {d['1']} {d['X']} {d['2']}")
@@ -1424,6 +1433,17 @@ def _morebets_bulletin(raw: str):
                 lines.append(f"4,5 Alt/Üst proxy g45 {g['4-5']}")
             if "6+" in g:
                 lines.append(f"6+ Gol {g['6+']}")
+        elif kind == "iyms":
+            order = ["1/1", "1/X", "1/2", "X/1", "X/X", "X/2", "2/1", "2/X", "2/2"]
+            got = []
+            for lab in order:
+                if lab in d:
+                    got.append(f"{lab} {d[lab]}")
+            if "1/1" in d and "X/1" in d:
+                lines.append("İY/MS " + " ".join(got))
+                for lab in order:
+                    if lab in d:
+                        lines.append(f"{lab}\n{d[lab]}")
     sov_au.sort()
     if sov_au and not any(x.startswith("4,5 Alt/Üst ") for x in lines):
         _, a, u = sov_au[0]
@@ -2290,6 +2310,17 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
         s, matches, title=match_title or title, league=league, q=q, bw=bw, p6=p6, lh=lh, standing=standing,
     )
     open_rank = score_open_picks(q, s, lh, standing)
+    htft = None
+    try:
+        htft = htft_evaluate(q)
+    except Exception:
+        htft = None
+    if htft:
+        extra_h = "\n".join(htft_lines(htft))
+        if "[[ATASU_TERCIH]]" in yorum:
+            yorum = yorum.replace("[[ATASU_TERCIH]]", extra_h + "\n\n[[ATASU_TERCIH]]", 1)
+        else:
+            yorum = yorum + "\n" + extra_h
     banko = None
     if open_rank:
         banko = banko_evaluate(open_rank[0], n, standing=standing, lh=lh, stats_obj=s)
@@ -2345,7 +2376,8 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
         "banko": banko,
         "open_markets": [{"key": k, "name": n, "odds": o} for k, n, o in open_markets(q)],
         "open_picks": open_rank,
-        "version": "5.5.0",
+        "htft": htft,
+        "version": "5.6.1",
     }
 
 
@@ -2425,7 +2457,7 @@ def plus6(q: Plus6Req):
 def brief(req: OddsReq):
     q = {}
     for k, v in req.odds.items():
-        if k not in MARKETS and k not in ("iy05", "nofirst", "o45"):
+        if k not in MARKETS and k not in ("iy05", "nofirst", "o45") and k not in HTFT_KEYS:
             continue
         try:
             f = float(v)
@@ -2586,14 +2618,14 @@ class OranScanReq(_BM):
 
 def _odds_from_row(m: dict) -> dict:
     q = {}
-    for k in MARKETS:
+    for k in list(MARKETS) + HTFT_KEYS:
         v = _odd(m.get(k))
         if v:
             q[k] = v
     extra = m.get("odds") if isinstance(m.get("odds"), dict) else {}
     for k, v in extra.items():
         vv = _odd(v)
-        if vv and (k in MARKETS or k in ("iy05", "nofirst", "o45")):
+        if vv and (k in MARKETS or k in HTFT_KEYS or k in ("iy05", "nofirst", "o45")):
             q[k] = vv
     return q
 
@@ -2627,6 +2659,11 @@ def scan_one_oran(m: dict, tol: float, bankroll: float) -> dict:
         lh = {}
     ranked = score_open_picks(q, s, lh, None)
     banko = banko_evaluate(ranked[0], n, standing=None, lh=lh, stats_obj=s) if ranked else None
+    htft = None
+    try:
+        htft = htft_evaluate(q)
+    except Exception:
+        htft = None
     rows = []
     for p in ranked:
         odd = p.get("odds")
@@ -2665,6 +2702,7 @@ def scan_one_oran(m: dict, tol: float, bankroll: float) -> dict:
         "sample": n,
         "fallback": fallback,
         "banko": banko,
+        "htft": htft,
         "best": rows[0] if rows else None,
         "markets": rows,
     }

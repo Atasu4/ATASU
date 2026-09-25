@@ -133,7 +133,7 @@ tr:hover td{background:rgba(228,201,138,.04)}
     <div>
       <h1 class="word">ATA<span>SU</span> <i>Intelligence</i></h1>
       <div class="meta" id="metaLine">Yükleniyor</div>
-      <a class="b" href="/indir" download="ATASU_5.6.1.zip" style="display:inline-block;margin-top:10px;text-decoration:none">Zip indir</a>
+      <a class="b" href="/indir" download="ATASU_5.6.1.zip" style="display:inline-block;margin-top:10px;text-decoration:none">Zip 5.6.1</a>
     </div>
     <nav class="tabs">
       <button class="tab on" data-t="model">Rapor</button>
@@ -254,6 +254,11 @@ function parseBulletin(text){
   grab1(/Ilk\s*Gol[^\n]*?Olmaz\s+([0-9]+[.,][0-9]+)/i,'nofirst');
   grab1(/İlk\s*Gol[^\n]*?Olmaz\s+([0-9]+[.,][0-9]+)/i,'nofirst');
   grab1(/6\s*\+\s*Gol\s+([0-9]+[.,][0-9]+)/i,'g6');
+  [['1/1','ht11'],['1/X','ht1x'],['1/2','ht12'],['X/1','htx1'],['X/X','htxx'],['X/2','htx2'],['2/1','ht21'],['2/X','ht2x'],['2/2','ht22']].forEach(pair=>{
+    const lab=pair[0], key=pair[1];
+    const re=new RegExp(lab.replace('/','\\/')+'\\s+([0-9]+[.,][0-9]+)','i');
+    grab1(re, key);
+  });
   const ms = t.match(/(?:Mac\s*Sonucu|Maç\s*Sonucu|1\s*X\s*2)[^\n]*?([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i);
   if(ms){
     const h=parseFloat(ms[1].replace(',','.')), d=parseFloat(ms[2].replace(',','.')), a=parseFloat(ms[3].replace(',','.'));
@@ -262,7 +267,7 @@ function parseBulletin(text){
   return odds;
 }
 function chips(odds){
-  const names = {h:'MS 1',d:'MS X',a:'MS 2',u25:'2.5 alt',o25:'2.5 üst',u35:'3.5 alt',o35:'3.5 üst',btts:'KG var',nobtts:'KG yok',iyu15:'İY 1.5 alt',iyo15:'İY 1.5 üst',g6:'6+'};
+  const names = {h:'MS 1',d:'MS X',a:'MS 2',u25:'2.5 alt',o25:'2.5 üst',u35:'3.5 alt',o35:'3.5 üst',btts:'KG var',nobtts:'KG yok',iyu15:'İY 1.5 alt',iyo15:'İY 1.5 üst',g6:'6+',ht11:'1/1',htx1:'X/1',ht12:'1/2',ht21:'2/1'};
   return '<div class="chipwrap">'+Object.entries(odds).map(([k,v])=>'<span class="chip"><em>'+(names[k]||k)+'</em>'+v+'</span>').join('')+'</div>';
 }
 function splitYorum(raw){
@@ -462,6 +467,17 @@ async function analyzeText(text, title){
   if(brief.coach && brief.coach.text){
     html += '<div class="verdict"><div class="kicker">Coach 5.5</div><p class="yorum">'+esc(brief.coach.text)+'</p></div>';
   }
+  if(brief.htft && brief.htft.ok){
+    const h = brief.htft;
+    const cls = h.banner==='good'?'go':(h.banner==='bad'?'':'');
+    html += '<div class="verdict '+cls+'"><div class="kicker">İY/MS · X/1 ÷ 1/1</div>';
+    html += '<div class="v-title">'+esc(h.verdict)+'</div>';
+    html += '<p class="v-sub">1/1 '+h.one_one+' · X/1 '+h.x_one+' · oran '+h.ratio+' · ref '+h.ref_min+'–'+h.ref_max+' (ort '+h.ref_avg+') · '+esc(h.tag_label)+'</p>';
+    if(h.one_two!=null && h.two_one!=null){
+      html += '<p class="v-sub">1/2 '+h.one_two+' · 2/1 '+h.two_one+' · fark '+h.diff_12_21+' · '+esc(h.tag2_label||'')+'</p>';
+    }
+    html += '<p class="yorum">'+esc(h.sub||'')+'</p></div>';
+  }
   $('outModel').innerHTML = html;
 
   let det = '';
@@ -548,6 +564,9 @@ async function runOranScan(){
       html += '<div class="kicker">'+(m.league||'')+' · '+(m.kickoff||'')+' · n='+(m.sample||0)+'</div>';
       html += '<div class="v-title">'+esc((m.home||'')+' — '+(m.away||''))+'</div>';
       if(b.label) html += '<p class="v-sub">Banko '+esc(b.gates_yes)+'/'+esc(b.gates_total)+' · '+esc(b.label)+' · '+esc(b.karar||'')+'</p>';
+      if(m.htft && m.htft.ok){
+        html += '<p class="v-sub">İY/MS '+esc(m.htft.verdict)+' · X/1÷1/1 '+m.htft.ratio+' · 1/1 '+m.htft.one_one+' · X/1 '+m.htft.x_one+'</p>';
+      }
       html += '<div class="scroll"><table><tr><th>Market</th><th>Açılış</th><th>Kapanış</th><th>Drift</th><th>Kalıp</th><th>Model</th><th>Blend</th><th>EV</th><th>½Kelly</th></tr>';
       (m.markets||[]).slice(0,6).forEach(x=>{
         const evc = (x.ev!=null && x.ev>=0)?'ok':'no';
