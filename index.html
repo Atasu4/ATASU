@@ -103,6 +103,12 @@ tr:hover td{background:rgba(228,201,138,.04)}
 .chipwrap{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0 4px}
 .chip{border:1px solid var(--line);padding:8px 11px;font:12px "IBM Plex Mono",monospace;background:var(--void)}
 .chip em{display:block;font-style:normal;color:var(--fog);font-size:9px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:3px}
+.tag{display:inline-block;padding:3px 9px;font-size:11px;letter-spacing:.04em}
+.tag.good{color:var(--go);border:1px solid rgba(183,228,176,.28)}
+.tag.mid{color:var(--gold);border:1px solid var(--line)}
+.tag.bad{color:var(--stop);border:1px solid rgba(232,154,163,.28)}
+.tag.none{color:var(--fog)}
+#refBody input{padding:8px 9px;font-size:12px}
 #bultenTablo .pick{padding:8px 12px;font-size:10px}
 .b-tools{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 14px}
 .b-tools input,.b-tools select{padding:11px 12px;font-size:13px}
@@ -141,6 +147,7 @@ tr:hover td{background:rgba(228,201,138,.04)}
       <button class="tab" data-t="detay">Detay</button>
       <button class="tab" data-t="exact">Excel</button>
       <button class="tab" data-t="oran">Oran</button>
+      <button class="tab" data-t="karsilastir">Karşılaştır</button>
       <button class="tab" data-t="p6">+6</button>
     </nav>
   </header>
@@ -191,6 +198,36 @@ tr:hover td{background:rgba(228,201,138,.04)}
     </div>
     <div id="outOran" class="mu">Bülteni tara.</div>
   </section>
+  <section id="panel-karsilastir" class="card hidden">
+    <p class="kicker">Oran karşılaştırma · referans bant + HT/FT</p>
+    <p class="hint">Önce referans satırlarını yükle (2-2, İY KG, X/2, 3.5 Üst, MS+2-3+4.5). Sonra bahis sitesinden kopyalanan ham metni yapıştır. Her “Maç Sonucu…” başlığı yeni maç sayılır.</p>
+    <label>Referans sistem</label>
+    <div class="btns" style="margin-top:8px">
+      <button class="b" type="button" onclick="loadPreset('sistem1')">2-2 Skor</button>
+      <button class="b" type="button" onclick="loadPreset('sistem2')">İY KG</button>
+      <button class="b" type="button" onclick="loadPreset('sistem3')">X/2</button>
+      <button class="b" type="button" onclick="loadPreset('sistem4')">3,5 Üst</button>
+      <button class="b" type="button" onclick="loadPreset('sistem5')">MS+2-3+4.5Ü</button>
+      <button class="r" type="button" onclick="clearRef()">Temizle</button>
+    </div>
+    <div class="scroll" style="margin-top:12px">
+      <table>
+        <thead><tr><th>Bahis türü</th><th>Sonuç</th><th>Referans oranlar</th><th></th></tr></thead>
+        <tbody id="refBody"></tbody>
+      </table>
+    </div>
+    <div class="btns"><button class="b" type="button" onclick="addRefRow()">+ Satır</button></div>
+    <label>Ham maç verisi</label>
+    <textarea id="matchInput" placeholder="Maç Sonucu14355&#10;1&#10;1.70&#10;X&#10;3.33&#10;2&#10;3.48"></textarea>
+    <div class="btns">
+      <button class="g" type="button" onclick="runAnalysis()">Analizi çalıştır</button>
+      <button class="g" type="button" onclick="runHTFT()">HT/FT analiz</button>
+      <button class="b" type="button" onclick="document.getElementById('matchInput').value=''">Veriyi sil</button>
+      <button class="b" type="button" onclick="exportCSV()">CSV</button>
+    </div>
+    <div id="htftResults"></div>
+    <div id="results"></div>
+  </section>
   <section id="panel-p6" class="card hidden">
     <p class="kicker">+6 referans bant</p>
     <p class="mu">2,5Ü 1.20–1.28 · 3,5Ü 1.66–1.89 · 4,5Ü 2.64–3.14 · KG Var 1.22–1.87</p>
@@ -200,7 +237,7 @@ tr:hover td{background:rgba(228,201,138,.04)}
 </div>
 <script>
 const $ = id => document.getElementById(id);
-const TABS = ['model','bulten','detay','exact','oran','p6'];
+const TABS = ['model','bulten','detay','exact','oran','karsilastir','p6'];
 function showTab(id){
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on', b.dataset.t===id));
   TABS.forEach(t=>$('panel-'+t).classList.toggle('hidden', t!==id));
@@ -603,6 +640,284 @@ async function pingUpdate(){
 }
 pingUpdate();
 setInterval(runUpdate, 15*60*1000);
+
+/* ---- Oran karşılaştırma (sekme) ---- */
+function norm(s){
+  return (s||'').toLowerCase()
+    .replace(/ç/g,'c').replace(/ğ/g,'g').replace(/ı/g,'i').replace(/ö/g,'o')
+    .replace(/ş/g,'s').replace(/ü/g,'u').replace(/i̇/g,'i')
+    .replace(/\s+/g,'').trim();
+}
+function toNum(v){
+  if(v===undefined||v===null) return null;
+  const s=String(v).trim();
+  if(s==='-'||s==='') return null;
+  const f=parseFloat(s.replace(',','.'));
+  return isNaN(f)?null:f;
+}
+let refRows = [];
+function addRefRow(market='', outcome='', values=''){
+  refRows.push({market, outcome, values});
+  renderRef();
+}
+function clearRef(){ refRows=[]; renderRef(); }
+function renderRef(){
+  const body = $('refBody');
+  if(!body) return;
+  body.innerHTML='';
+  refRows.forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = '<td><input value="'+esc(r.market)+'" oninput="refRows['+i+'].market=this.value"></td>'+
+      '<td><input value="'+esc(r.outcome)+'" oninput="refRows['+i+'].outcome=this.value"></td>'+
+      '<td><input value="'+esc(r.values)+'" oninput="refRows['+i+'].values=this.value"></td>'+
+      '<td><button class="r" type="button" onclick="refRows.splice('+i+',1);renderRef();">×</button></td>';
+    body.appendChild(tr);
+  });
+  if(!refRows.length){
+    body.innerHTML = '<tr><td colspan="4" class="mu">Preset yükle veya satır ekle.</td></tr>';
+  }
+}
+const PRESETS = {
+  sistem1: [
+    ['1,5 Alt/Üst','Üst','1.23'],
+    ['1. Yarı 0,5 Alt/Üst','Üst','1.09'],
+    ['1. Yarı 1,5 Alt/Üst','Üst','2.87'],
+    ['Tek/Çift','Tek','1.75'],
+    ['Toplam Gol Aralığı','2-3 Gol','1.78,1.86,1.77,1.93,1.77'],
+    ['Tek/Çift','Çift','1.64,1.65,1.61,1.63,1.65'],
+    ['Korner Tek/Çift','Tek','1.65,1.65,1.65,1.65'],
+    ['Karşılıklı Gol','Var','1.62,1.41,1.72,1.33,1.69'],
+    ['2,5 Alt/Üst','Üst','1.80,1.49,1.95,1.40,1.93'],
+  ],
+  sistem2: [
+    ['Karşılıklı Gol','Var','1.54,1.51'],
+    ['1,5 Alt/Üst','Üst','1.12,1.15'],
+    ['2,5 Alt/Üst','Üst','1.44,1.54'],
+    ['1. Yarı 1,5 Alt/Üst','Üst','2.43,2.49'],
+  ],
+  sistem3: [
+    ['İlk Yarı/Maç Sonucu','X/2','4.28,4.24,4.01,4.66,4.68,5.30,5.86,5.78,6.32,7.76,7.84,6.30,13.00'],
+    ['1. Yarı Sonucu','X','2.20,2.10,2.36,2.03,2.26,1.99,1.93,1.88,1.91,2.01,2.07,2.07,2.37'],
+    ['Tek/Çift','Tek','1.73,1.75,1.72,1.75,1.75,1.76,1.70,1.80,1.78,1.80,1.76,1.77,1.72'],
+    ['Korner Tek/Çift','Tek','1.65,1.65,1.65,1.65,1.65,1.65,1.61,1.65,1.66,1.65,1.65,1.65,1.65'],
+  ],
+  sistem4: [
+    ['2,5 Alt/Üst','Üst','1.35,1.38,1.39,1.44,1.49,1.51,1.51,1.59,1.67,1.70,1.80,1.81'],
+    ['3,5 Alt/Üst','Üst','2.01,2.09,2.11,2.26,2.36,2.40,2.44,2.62,2.84,2.85,3.17,3.19'],
+    ['Karşılıklı Gol','Var','1.35,1.37,1.38,1.41,1.43,1.47,1.47,1.52,1.52,1.55,1.61,1.62'],
+    ['Toplam Gol Aralığı','4-5 Gol','2.70,2.77,2.79,2.94,3.01,3.05,3.09,3.25,3.47,3.48,3.79,3.82'],
+  ],
+  sistem5: [
+    ['Maç Sonucu','1','2.79,2.77,2.42,1.78,1.81,2.03,1.91'],
+    ['Maç Sonucu','X','2.89,2.98,2.90,2.91,2.97,3.01,2.88'],
+    ['Maç Sonucu','2','2.12,2.08,2.40,3.71,3.46,2.84,3.27'],
+    ['Toplam Gol Aralığı','2-3 Gol','1.77'],
+    ['Maç Sonucu ve (4,5) Alt/Üst','X ve Üst','35.00'],
+  ],
+};
+function loadPreset(key){
+  (PRESETS[key]||[]).forEach(([m,o,v])=>refRows.push({market:m,outcome:o,values:v}));
+  renderRef();
+}
+function parseMatches(raw){
+  const lines = raw.split(/\r?\n/).map(l=>l.trim()).filter(l=>l.length>0);
+  const matches = [];
+  let current = null, currentMarket = null, pendingLabel = null;
+  const isValue = (l)=> l==='-' || /^-?\d+[.,]\d+$/.test(l);
+  const headerRe = /^(.+\D)(\d{3,6})$/;
+  for(const line of lines){
+    if(isValue(line)){
+      if(current && currentMarket && pendingLabel!==null){
+        current.markets[currentMarket] = current.markets[currentMarket] || {};
+        current.markets[currentMarket][pendingLabel] = line;
+      }
+      pendingLabel = null;
+      continue;
+    }
+    const hm = line.match(headerRe);
+    if(hm){
+      const name = hm[1].trim();
+      const code = hm[2];
+      if(norm(name)===norm('Maç Sonucu')){
+        current = {code, name, markets:{}};
+        matches.push(current);
+      }
+      if(!current){
+        current = {code:code, name:'(isimsiz)', markets:{}};
+        matches.push(current);
+      }
+      currentMarket = name;
+      current.markets[currentMarket] = current.markets[currentMarket] || {};
+      pendingLabel = null;
+      continue;
+    }
+    pendingLabel = line;
+  }
+  return matches;
+}
+function findValue(markets, marketName, outcomeName){
+  const nm = norm(marketName);
+  for(const mk in markets){
+    if(norm(mk)===nm){
+      const outcomes = markets[mk];
+      for(const ok in outcomes){
+        if(norm(ok)===norm(outcomeName)) return outcomes[ok];
+      }
+    }
+  }
+  return null;
+}
+let lastResults = [];
+function runAnalysis(){
+  const raw = ($('matchInput')||{}).value||'';
+  const matches = parseMatches(raw);
+  const container = $('results');
+  container.innerHTML='';
+  lastResults = [];
+  if(!matches.length){ container.innerHTML = '<p class="no">Maç verisi yok.</p>'; return; }
+  if(!refRows.length){ container.innerHTML = '<p class="no">Önce referans satırı ekle.</p>'; return; }
+  matches.forEach(m=>{
+    const oneXTwo = m.markets[Object.keys(m.markets).find(k=>norm(k)===norm('Maç Sonucu'))||''] || {};
+    const sonucStr = ['1','X','2'].map(k=>oneXTwo[k]).filter(Boolean).join(' / ');
+    let rowsHtml = '';
+    refRows.forEach(r=>{
+      if(!r.market || !r.outcome || !String(r.values||'').trim()) return;
+      const refVals = String(r.values).split(',').map(s=>toNum(s)).filter(v=>v!==null);
+      const rawMatchVal = findValue(m.markets, r.market, r.outcome);
+      const matchVal = toNum(rawMatchVal);
+      let closest=null, diff=null, tag='none', tagLabel='Veri yok';
+      if(matchVal!==null && refVals.length){
+        refVals.forEach(rv=>{
+          const d = Math.abs(rv-matchVal);
+          if(diff===null || d<diff){ diff=d; closest=rv; }
+        });
+        if(diff<=0.01){ tag='good'; tagLabel='Tam eşit'; }
+        else if(diff<=0.05){ tag='good'; tagLabel='Çok yakın'; }
+        else if(diff<=0.15){ tag='mid'; tagLabel='Yakın'; }
+        else { tag='bad'; tagLabel='Uyuşmuyor'; }
+      }
+      lastResults.push({macKod:m.code, macSonuc:sonucStr, bahisTuru:r.market, sonucOutcome:r.outcome, referans:r.values, macOrani: rawMatchVal==null?'-':rawMatchVal, enYakinRef: closest==null?'-':closest, fark: diff==null?'-':diff.toFixed(2), uyum: tagLabel});
+      rowsHtml += '<tr><td>'+esc(r.market)+'</td><td>'+esc(r.outcome)+'</td><td>'+esc(r.values)+'</td><td>'+(rawMatchVal==null?'—':rawMatchVal)+'</td><td>'+(closest==null?'—':closest)+'</td><td>'+(diff==null?'—':diff.toFixed(2))+'</td><td><span class="tag '+tag+'">'+tagLabel+'</span></td></tr>';
+    });
+    container.insertAdjacentHTML('beforeend',
+      '<div class="verdict"><div class="kicker">Maç '+esc(m.code)+(sonucStr?' · 1-X-2 '+esc(sonucStr):'')+'</div>'+
+      '<div class="scroll"><table><thead><tr><th>Bahis</th><th>Sonuç</th><th>Referans</th><th>Maç</th><th>En yakın</th><th>Fark</th><th>Uyum</th></tr></thead><tbody>'+
+      (rowsHtml||'<tr><td colspan="7" class="mu">Eşleşme yok</td></tr>')+'</tbody></table></div></div>');
+  });
+}
+function computeHTFT(m){
+  const key = Object.keys(m.markets).find(k=>norm(k)===norm('İlk Yarı/Maç Sonucu'));
+  if(!key) return null;
+  const cells = m.markets[key];
+  const labels = ['1/1','1/X','1/2','X/1','X/X','X/2','2/1','2/X','2/2'];
+  const odds = {};
+  for(const lab of labels){
+    const found = Object.keys(cells).find(k=>norm(k)===norm(lab));
+    odds[lab] = found ? toNum(cells[found]) : null;
+  }
+  if(labels.some(l=>odds[l]===null)) return {incomplete:true, odds};
+  const raw = {}; labels.forEach(l=> raw[l] = 1/odds[l]);
+  const overround = labels.reduce((s,l)=>s+raw[l],0);
+  const fair = {}; labels.forEach(l=> fair[l] = raw[l]/overround);
+  const continuity = fair['1/1']+fair['X/X']+fair['2/2'];
+  const change = 1-continuity;
+  let bestLabel = labels[0];
+  labels.forEach(l=>{ if(odds[l]<odds[bestLabel]) bestLabel=l; });
+  const iyX = fair['X/1']+fair['X/X']+fair['X/2'];
+  const iy1 = fair['1/1']+fair['1/X']+fair['1/2'];
+  const iy2 = fair['2/1']+fair['2/X']+fair['2/2'];
+  let crossCheck = null;
+  const iyKey = Object.keys(m.markets).find(k=>norm(k)===norm('1. Yarı Sonucu'));
+  if(iyKey){
+    const o1 = toNum(findValue(m.markets, '1. Yarı Sonucu','1'));
+    const oX = toNum(findValue(m.markets, '1. Yarı Sonucu','X'));
+    const o2 = toNum(findValue(m.markets, '1. Yarı Sonucu','2'));
+    if(o1!=null && oX!=null && o2!=null){
+      const r1=1/o1, rX=1/oX, r2=1/o2, sum=r1+rX+r2;
+      const f1=r1/sum, fX=rX/sum, f2=r2/sum;
+      crossCheck = {
+        iy1: {fromHTFT: iy1, standalone: f1, diff: Math.abs(iy1-f1)},
+        iyX: {fromHTFT: iyX, standalone: fX, diff: Math.abs(iyX-fX)},
+        iy2: {fromHTFT: iy2, standalone: f2, diff: Math.abs(iy2-f2)}
+      };
+    }
+  }
+  const kgVar = toNum(findValue(m.markets, 'Karşılıklı Gol','Var'));
+  const u25 = toNum(findValue(m.markets, '2,5 Alt/Üst','Üst'));
+  const o1x2 = {ev: toNum(findValue(m.markets,'Maç Sonucu','1')), ber: toNum(findValue(m.markets,'Maç Sonucu','X')), dep: toNum(findValue(m.markets,'Maç Sonucu','2'))};
+  const dcgy = {y1: toNum(findValue(m.markets,'Daha Çok Gol Olacak Yarı','1.Y')), esit: toNum(findValue(m.markets,'Daha Çok Gol Olacak Yarı','Eşit')), y2: toNum(findValue(m.markets,'Daha Çok Gol Olacak Yarı','2.Y'))};
+  const iy05 = toNum(findValue(m.markets,'1. Yarı 0,5 Alt/Üst','Üst'));
+  const evIy05 = toNum(findValue(m.markets,'Evsahibi 0,5 Alt/Üst','Üst'));
+  const depIy05 = toNum(findValue(m.markets,'Deplasman 0,5 Alt/Üst','Üst'));
+  const ilkGol = {ev: toNum(findValue(m.markets,'İlk Gol','1')), olmaz: toNum(findValue(m.markets,'İlk Gol','Olmaz')), dep: toNum(findValue(m.markets,'İlk Gol','2'))};
+  let hangiYari = null;
+  if(dcgy.y1!=null && dcgy.y2!=null) hangiYari = dcgy.y1 < dcgy.y2 ? '1. Yarı' : (dcgy.y2 < dcgy.y1 ? '2. Yarı' : 'Eşit ihtimal');
+  let ikiTakimDaIy = null;
+  if(evIy05!=null && depIy05!=null){
+    const evDusuk = evIy05 <= 1.30, depDusuk = depIy05 <= 1.30;
+    if(evDusuk && depDusuk) ikiTakimDaIy = 'İkisi de yüksek ihtimalle ilk yarıda gol atar — İY 1-1 güçlü';
+    else if(evDusuk && !depDusuk) ikiTakimDaIy = 'Ev İY gol yüksek — İY 1-0 güçlü';
+    else if(!evDusuk && depDusuk) ikiTakimDaIy = 'Dep İY gol yüksek — İY 0-1 güçlü';
+    else ikiTakimDaIy = 'İY her iki taraf düşük — İY 0-0 güçlü';
+  }
+  let favoriYorum = null;
+  if(o1x2.ev!=null && o1x2.ber!=null && o1x2.dep!=null){
+    const min = Math.min(o1x2.ev,o1x2.ber,o1x2.dep);
+    if(min===o1x2.ber) favoriYorum = 'Dengeli maç — X/1, X/2 güçlenir';
+    else if(min===o1x2.ev) favoriYorum = 'Ev favori — 1/1 veya 1/X güçlenir';
+    else favoriYorum = 'Dep favori — 2/2 veya X/2 güçlenir';
+  }
+  return {incomplete:false, odds, fair, overround, continuity, change, bestLabel, iy1, iyX, iy2, crossCheck, kgVar, u25,
+    method5: {o1x2, dcgy, iy05, evIy05, depIy05, ilkGol, hangiYari, ikiTakimDaIy, favoriYorum}};
+}
+function labels_str(odds){
+  return ['1/1','1/X','1/2','X/1','X/X','X/2','2/1','2/X','2/2'].map(l=>l+':'+odds[l]).join('  ');
+}
+function runHTFT(){
+  const raw = ($('matchInput')||{}).value||'';
+  const matches = parseMatches(raw);
+  const container = $('htftResults');
+  container.innerHTML = '';
+  if(!matches.length){ container.innerHTML = '<p class="no">Maç verisi yok.</p>'; return; }
+  const pct = v => (v*100).toFixed(1)+'%';
+  matches.forEach(m=>{
+    const a = computeHTFT(m);
+    if(!a){ container.insertAdjacentHTML('beforeend','<div class="verdict"><div class="kicker">Maç '+esc(m.code)+'</div><p class="mu">İY/MS pazarı yok.</p></div>'); return; }
+    if(a.incomplete){ container.insertAdjacentHTML('beforeend','<div class="verdict"><div class="kicker">Maç '+esc(m.code)+'</div><p class="mu">İY/MS hücreleri eksik.</p></div>'); return; }
+    let rows = '<tr><td>En olası senaryo</td><td>'+a.bestLabel+' — '+a.odds[a.bestLabel]+'</td></tr>'+
+      '<tr><td>Devamlılık 1/1+X/X+2/2</td><td>'+pct(a.continuity)+'</td></tr>'+
+      '<tr><td>Değişim</td><td>'+pct(a.change)+'</td></tr>'+
+      '<tr><td>İY 1 / X / 2</td><td>'+pct(a.iy1)+' / '+pct(a.iyX)+' / '+pct(a.iy2)+'</td></tr>'+
+      '<tr><td>Marj</td><td>'+((a.overround-1)*100).toFixed(1)+'%</td></tr>';
+    const m5 = a.method5;
+    if(m5){
+      if(m5.o1x2.ev!=null) rows += '<tr><td>MS 1/X/2</td><td>'+m5.o1x2.ev+' / '+m5.o1x2.ber+' / '+m5.o1x2.dep+'</td></tr>';
+      if(m5.favoriYorum) rows += '<tr><td colspan="2" class="mu">→ '+esc(m5.favoriYorum)+'</td></tr>';
+      if(m5.dcgy.y1!=null) rows += '<tr><td>Daha çok gol yarı</td><td>'+m5.dcgy.y1+' / '+m5.dcgy.esit+' / '+m5.dcgy.y2+'</td></tr>';
+      if(m5.hangiYari) rows += '<tr><td colspan="2" class="mu">→ Favori: '+esc(m5.hangiYari)+'</td></tr>';
+      if(m5.iy05!=null) rows += '<tr><td>İY 0,5 Üst</td><td>'+m5.iy05+'</td></tr>';
+      if(m5.ikiTakimDaIy) rows += '<tr><td colspan="2" class="mu">→ '+esc(m5.ikiTakimDaIy)+'</td></tr>';
+    }
+    container.insertAdjacentHTML('beforeend',
+      '<div class="verdict"><div class="kicker">Maç '+esc(m.code)+'</div><p class="v-sub">'+esc(labels_str(a.odds))+'</p>'+
+      '<table><tbody>'+rows+'</tbody></table></div>');
+  });
+}
+function exportCSV(){
+  if(!lastResults.length){ alert('Önce analizi çalıştır.'); return; }
+  const headers = ['Maç Kodu','1-X-2','Bahis Türü','Sonuç','Referans Oranlar','Maç Oranı','En Yakın Referans','Fark','Uyum'];
+  const lines = [headers.join(';')];
+  lastResults.forEach(r=>{
+    lines.push([r.macKod,r.macSonuc,r.bahisTuru,r.sonucOutcome,r.referans,r.macOrani,r.enYakinRef,r.fark,r.uyum].map(v=>String(v).replace(/;/g,',')).join(';'));
+  });
+  const blob = new Blob(['\uFEFF'+lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download='oran_analizi.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+loadPreset('sistem1');
 </script>
 </body>
 </html>
