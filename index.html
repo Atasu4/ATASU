@@ -1,314 +1,86 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ATASU</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{
-  --ink:#07080A;
-  --void:#0C0D10;
-  --paper:#101217;
-  --wash:#0E1014;
-  --gold:#E4C98A;
-  --gold2:#B8945A;
-  --champagne:#F4E6C0;
-  --line:rgba(214,186,132,.16);
-  --line2:rgba(214,186,132,.28);
-  --fog:#8E918B;
-  --snow:#F6F1E6;
-  --go:#B7E4B0;
-  --stop:#E89AA3;
-}
+:root{--bg:#0e1116;--card:#171b22;--line:#2a3140;--txt:#e8edf5;--mute:#8b95a8;--go:#3dd68c;--no:#ff6b6b;--acc:#6ea8ff}
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--ink);color:var(--snow);font-family:Manrope,system-ui,sans-serif}
-body{
-  min-height:100vh;
-  background:
-    radial-gradient(ellipse 70% 36% at 50% -8%, rgba(184,148,90,.16), transparent 52%),
-    linear-gradient(180deg, var(--wash) 0%, var(--ink) 28%);
-}
-.frame{max-width:1080px;margin:0 auto;padding:0 22px 96px}
-.mast{
-  position:sticky;top:0;z-index:20;
-  padding:22px 0 0;
-  background:linear-gradient(180deg, rgba(7,8,10,.96) 70%, rgba(7,8,10,.72));
-  backdrop-filter:blur(16px);
-  border-bottom:1px solid var(--line);
-}
-.word{font-family:"Cormorant Garamond",Georgia,serif;font-size:40px;line-height:.92;margin:0;font-weight:500;letter-spacing:.04em;color:var(--gold)}
-.word span{font-weight:600;letter-spacing:.12em}
-.word i{font-style:italic;color:var(--snow);font-weight:500;letter-spacing:0;margin-left:8px;opacity:.88}
-.meta{font:400 10px/1.4 "IBM Plex Mono",monospace;color:var(--fog);letter-spacing:.14em;text-transform:uppercase;margin-top:8px}
-.tabs{display:flex;gap:2px;margin-top:18px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
-.tabs::-webkit-scrollbar{display:none}
-.tab{
-  background:transparent;border:0;border-bottom:1px solid transparent;
-  color:var(--fog);padding:11px 14px 13px;white-space:nowrap;
-  font:500 11px Manrope;letter-spacing:.16em;text-transform:uppercase;cursor:pointer
-}
-.tab.on{color:var(--gold);border-bottom-color:var(--gold)}
-.stage{padding-top:26px}
-.card{
-  background:
-    linear-gradient(165deg, rgba(228,201,138,.05), transparent 42%),
-    var(--paper);
-  border:1px solid var(--line);
-  padding:26px 24px 28px;
-  box-shadow:0 24px 60px rgba(0,0,0,.35);
-}
-.kicker{font:500 10px/1 "IBM Plex Mono",monospace;letter-spacing:.2em;text-transform:uppercase;color:var(--gold2);margin:0 0 16px}
-label{display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--fog);margin:14px 0 7px}
-textarea,input{
-  width:100%;background:var(--void);border:1px solid var(--line);color:var(--snow);
-  border-radius:0;padding:13px 14px;font:13px/1.5 "IBM Plex Mono",monospace
-}
-textarea{min-height:88px;resize:vertical}
-textarea:focus,input:focus{outline:none;border-color:var(--gold2);box-shadow:0 0 0 1px rgba(184,148,90,.25)}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.btns{display:flex;gap:8px;margin-top:20px;flex-wrap:wrap}
-button{border:0;padding:12px 18px;font:600 11px Manrope;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
-.g{background:var(--gold);color:#16120a}
-.g:hover{background:#f0d7a4}
-.b{background:transparent;color:var(--snow);border:1px solid var(--line)}
-.b:hover{border-color:var(--line2);color:var(--gold)}
-.r{background:transparent;color:var(--stop);border:1px solid rgba(232,154,163,.28)}
-.kpi{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);margin:18px 0;border:1px solid var(--line)}
-.k{background:var(--void);padding:16px 16px 14px}
-.k span{display:block;font:400 9px/1 "IBM Plex Mono",monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--fog)}
-.k b{display:block;margin-top:10px;font:500 28px/1 "Cormorant Garamond",serif;color:var(--gold)}
-.hint{font-size:12px;color:var(--fog);line-height:1.55;margin:0 0 14px}
-.ok{color:var(--go)}.no{color:var(--stop)}.mu{color:var(--fog);font-size:13px;line-height:1.6}
+body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.45 -apple-system,system-ui,sans-serif}
+.wrap{max-width:720px;margin:0 auto;padding:16px}
+header{margin-bottom:14px}
+h1{font-size:20px;margin:0}
+.meta{color:var(--mute);font-size:12px;margin-top:4px}
+.tabs{display:flex;gap:6px;margin:12px 0}
+.tab{flex:1;background:#12161c;border:1px solid var(--line);color:var(--txt);padding:10px;border-radius:10px}
+.tab.on{border-color:var(--acc);background:#1a2333}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
 .hidden{display:none}
-.scroll{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
-th{color:var(--fog);font:500 9px/1 Manrope;letter-spacing:.14em;text-transform:uppercase;text-align:left;padding:11px 8px;border-bottom:1px solid var(--line)}
-td{padding:11px 8px;border-bottom:1px solid rgba(214,186,132,.08);font-family:"IBM Plex Mono",monospace;font-size:12px}
-tr:hover td{background:rgba(228,201,138,.04)}
-.verdict{padding:20px 20px 18px;margin:18px 0 10px;border:1px solid var(--line);background:rgba(255,255,255,.015)}
-.verdict.go{background:linear-gradient(135deg, rgba(183,228,176,.07), transparent 60%);border-color:rgba(183,228,176,.22)}
-.v-title{font:500 28px/1.12 "Cormorant Garamond",serif;margin:6px 0 8px;letter-spacing:.01em}
-.v-sub{color:var(--fog);font-size:13px;line-height:1.6;white-space:pre-wrap}
-.yorum{font:400 14.5px/1.7 Manrope,system-ui,sans-serif;white-space:pre-wrap;color:var(--snow);margin:0}
-.tercih{
-  margin-top:16px;padding:16px 18px;
-  border:1px solid var(--gold2);
-  background:linear-gradient(180deg, rgba(184,148,90,.12), rgba(184,148,90,.04));
-}
-.tercih .kicker{margin-bottom:8px}
-.tercih p{margin:0;font:500 15px/1.55 Manrope;color:var(--champagne);white-space:pre-wrap}
-.chipwrap{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0 4px}
-.chip{border:1px solid var(--line);padding:8px 11px;font:12px "IBM Plex Mono",monospace;background:var(--void)}
-.chip em{display:block;font-style:normal;color:var(--fog);font-size:9px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:3px}
-#bultenTablo .pick{padding:8px 12px;font-size:10px}
-.b-tools{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 14px}
-.b-tools input,.b-tools select{padding:11px 12px;font-size:13px}
-.b-liga{font:500 10px/1 "IBM Plex Mono",monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--gold2);margin:16px 0 8px}
-.b-card{
-  display:grid;grid-template-columns:56px 1fr auto;gap:10px;align-items:center;
-  border:1px solid var(--line);padding:12px 12px;margin:0 0 8px;background:var(--void);cursor:pointer
-}
-.b-card.on{border-color:var(--gold2);background:rgba(184,148,90,.1)}
-.b-card .tm{font:500 13px/1.35 Manrope;color:var(--snow)}
-.b-card .saat{font:500 15px "IBM Plex Mono",monospace;color:var(--gold)}
-.b-card .odds{font:400 10px "IBM Plex Mono",monospace;color:var(--fog);margin-top:4px}
-.b-card .pick{padding:11px 14px;min-width:64px}
-.b-empty{color:var(--fog);font-size:13px;padding:12px 0}
-@media(max-width:700px){
-  .word{font-size:32px}
-  .row{grid-template-columns:1fr}
-  .frame{padding-left:16px;padding-right:16px}
-  .tab{padding-left:11px;padding-right:11px;letter-spacing:.1em}
-  .card{padding:20px 16px}
-  .k b{font-size:24px}
-}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+button{border:0;border-radius:10px;padding:10px 14px;font-weight:600}
+.g{background:var(--go);color:#062}
+.b{background:#2a3548;color:#dbe7ff}
+.hint,.mu,.no{color:var(--mute);font-size:13px}
+.no{color:var(--no)}
+.b-card{display:grid;grid-template-columns:56px 1fr auto;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.saat{color:var(--mute);font-size:13px}
+.tm{font-weight:650}
+.odds{color:var(--mute);font-size:12px}
+.verdict{border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0}
+.verdict.go{border-color:#2e6}
+.kicker{font-size:12px;color:var(--mute)}
+.v-title{font-weight:700;margin:4px 0}
+.yorum{margin:6px 0}
 </style>
 </head>
 <body>
-<div class="frame">
-  <header class="mast">
-    <div>
-      <h1 class="word">ATA<span>SU</span> <i>Intelligence</i></h1>
-      <div class="meta" id="metaLine">ATASU</div>
-      <a class="b" href="/indir" download="ATASU_5.8.1.zip" style="display:inline-block;margin-top:10px;text-decoration:none">Zip indir</a>
-    </div>
+<div class="wrap">
+  <header>
+    <h1>ATASU</h1>
+    <div class="meta" id="metaLine">İddaa bülteni · şablon masa</div>
     <nav class="tabs">
-      <button class="tab on" data-t="model">Rapor</button>
+      <button class="tab on" data-t="bulten">Bülten</button>
       <button class="tab" data-t="masa">Masa</button>
-      <button class="tab" data-t="bulten">Bülten</button>
-      <button class="tab" data-t="detay">Detay</button>
-      <button class="tab" data-t="oran">Oran</button>
-      <button class="tab" data-t="p6">+6</button>
     </nav>
   </header>
-  <main class="stage">
-  <section id="panel-model" class="card">
-    <p class="kicker">Tek link · yorumcu</p>
-    <input id="link" placeholder="https://www.mackolik.com/...">
-    <div class="row">
-      <div><label>Lig (opsiyonel)</label><input id="league" placeholder=""></div>
-      <div><label>Tolerans</label><input id="tol" type="number" step="0.01" value="0.05"></div>
-    </div>
-    <div class="row">
-      <div><label>Limit</label><input id="lim" type="number" value="80"></div>
-      <div><label>Maç adı</label><input id="lhQ" placeholder="Ev - Dep"></div>
-    </div>
-    <div class="row">
-      <div><label>Canlı dakika</label><input id="liveMin" type="number" placeholder="ör. 67"></div>
-      <div><label>Canlı skor</label><input id="liveScore" placeholder="1-0"></div>
-    </div>
+  <section id="panel-bulten" class="card">
+    <p class="hint">Bugünün İddaa programı. Satırda Analiz = tek tık.</p>
     <div class="btns">
-      <button class="g" onclick="runAll()">Tara</button>
-      <button class="b" onclick="loadBulletin()">Günlük bülten</button>
-      <button class="b" onclick="runFilterScan()">Şablon tara</button>
-      <button class="b" onclick="runUpdate()">Güncelle</button>
-      <button class="r" onclick="clearAll()">Sil</button>
-    </div>
-    <p class="hint" id="updHint">Yorumcu tek iş konuşur. Güncelle: cache sil + biten maç.</p>
-    <div id="outModel"></div>
-  </section>
-  <section id="panel-masa" class="card hidden">
-    <p class="kicker">Günlük masa · kuyruk</p>
-    <p class="hint">Bugünün İddaa’sı. 9 referans: Nijer MS1, Ruanda üst, Hellerup 0,5, TR/MAC 3,5A, POL X, İTA üst, Estrella/Grenada 2,5A.</p>
-    <div class="btns">
-      <button class="g" onclick="runDesk()">Masayı kur</button>
-      <button class="b" onclick="runFilterScan()">Şablon tara</button>
-    </div>
-    <div id="outMasa" class="mu">Masayı kur.</div>
-  </section>
-  <section id="panel-bulten" class="card hidden">
-    <p class="kicker">Günlük maç bülteni</p>
-    <p class="hint">Saat sırası. Şablon tara tüm bülteni filtreler. Satırın Tara’sına basınca Rapor açılır.</p>
-    <div class="btns">
-      <button class="b" onclick="loadBulletin()">Listele</button>
-      <button class="g" onclick="runFilterScan()">Şablon tara</button>
+      <button class="g" onclick="loadBulletin()">Bülteni yükle</button>
     </div>
     <div id="bulletinBox"></div>
   </section>
-  <section id="panel-detay" class="card hidden">
-    <p class="kicker">Tablo · form · açık sıra</p>
-    <div id="outDetay" class="mu">Önce Rapor’da Tara.</div>
-  </section>
-  <section id="panel-oran" class="card hidden">
-    <p class="kicker">OranAnaliz · benzer band + EV</p>
-    <p class="hint">Bültendeki açık MS / 2.5 satırlarını history ile aynı oran bandında tarar. Para önerisi yok.</p>
-    <div class="row">
-      <div><label>Tolerans</label><input id="oranTol" type="number" step="0.01" value="0.08"></div>
-    </div>
+  <section id="panel-masa" class="card hidden">
+    <p class="hint">Aynı bülten, senin attığın maç oranlarına vurulur. Oturan satır çıkar.</p>
     <div class="btns">
-      <button class="g" onclick="runOranScan()">Bülteni tara</button>
+      <button class="g" onclick="runFilterScan()">Masayı tara</button>
     </div>
-    <div id="outOran" class="mu">Bülteni tara.</div>
+    <div id="outMasa" class="mu">Masayı tara.</div>
   </section>
-  <section id="panel-p6" class="card hidden">
-    <p class="kicker">+6 referans bant</p>
-    <p class="mu">2,5Ü 1.20–1.28 · 3,5Ü 1.66–1.89 · 4,5Ü 2.64–3.14 · KG Var 1.22–1.87</p>
-    <div id="outP6" class="mu">Aynı linkten dolar.</div>
-  </section>
-  </main>
 </div>
 <script>
 const $ = id => document.getElementById(id);
-const TABS = ['model','masa','bulten','detay','oran','p6'];
-function showTab(id){
-  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on', b.dataset.t===id));
-  TABS.forEach(t=>$('panel-'+t).classList.toggle('hidden', t!==id));
-}
 document.querySelectorAll('.tab').forEach(btn=>{
-  btn.onclick=()=>showTab(btn.dataset.t);
+  btn.onclick=()=>{
+    document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on', b===btn));
+    $('panel-bulten').classList.toggle('hidden', btn.dataset.t!=='bulten');
+    $('panel-masa').classList.toggle('hidden', btn.dataset.t!=='masa');
+  };
 });
-(function loadMeta(){
-  const ctl = new AbortController();
-  const t = setTimeout(()=>ctl.abort(), 12000);
-  fetch('/api/meta', {signal: ctl.signal}).then(r=>{
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    return r.json();
-  }).then(m=>{
-    $('metaLine').textContent = (m.history_rows||0) + ' kayıt · ' + (m.completed_rows||0) + ' sonuçlu · v' + (m.version||'?') + (m.warning? ' · '+m.warning:'');
-  }).catch(err=>{
-    const asleep = String(err.name||err)==='AbortError';
-    $('metaLine').textContent = asleep
-      ? 'Sunucu uyanmıyor (Render uyku). 30 sn bekleyip yenile.'
-      : 'API yok — Render log / uvicorn PORT';
-  }).finally(()=>clearTimeout(t));
-})();
-
-function parseBulletin(text){
-  const t = (text||'').replace(/\u00a0/g,' ').replace(/[–—]/g,'-');
-  const odds = {};
-  const grab2 = (re, k1, k2)=>{
-    const m = t.match(re);
-    if(!m) return;
-    const a = parseFloat(String(m[1]).replace(',','.'));
-    const b = parseFloat(String(m[2]).replace(',','.'));
-    if(a>1 && a<80) odds[k1]=a;
-    if(b>1 && b<80) odds[k2]=b;
-  };
-  const grab1 = (re, k)=>{
-    const m = t.match(re);
-    if(!m) return;
-    const a = parseFloat(String(m[1]).replace(',','.'));
-    if(a>1 && a<80) odds[k]=a;
-  };
-  grab2(/2\s*[,.]?\s*5\s*Alt\s*\/\s*Ust\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i,'u25','o25');
-  grab2(/2\s*[,.]?\s*5\s*Alt\s*\/\s*Üst\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i,'u25','o25');
-  grab2(/3\s*[,.]?\s*5\s*Alt\s*\/\s*Üst\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i,'u35','o35');
-  grab2(/4\s*[,.]?\s*5\s*Alt\s*\/\s*Üst\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i,'g45','o45');
-  grab2(/Karsilikli\s*Gol[^\n]*?Var\s+([0-9]+[.,][0-9]+)[^\n]*?Yok\s+([0-9]+[.,][0-9]+)/i,'btts','nobtts');
-  grab2(/Karşılıklı\s*Gol[^\n]*?Var\s+([0-9]+[.,][0-9]+)[^\n]*?Yok\s+([0-9]+[.,][0-9]+)/i,'btts','nobtts');
-  if(!odds.btts) grab1(/Karşılıklı\s*Gol[^\n]*?Var\s+([0-9]+[.,][0-9]+)/i,'btts');
-  grab2(/1\.\s*Yari\s*1\s*[,.]?\s*5\s*Alt\s*\/\s*Üst\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i,'iyu15','iyo15');
-  grab2(/1\.\s*Yarı\s*0\s*[,.]?\s*5\s*Alt\s*\/\s*Üst\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i,'iyu05','iy05');
-  grab2(/1\.\s*Yarı\s*1\s*[,.]?\s*5\s*Alt\s*\/\s*Üst\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i,'iyu15','iyo15');
-  grab1(/Ilk\s*Gol[^\n]*?Olmaz\s+([0-9]+[.,][0-9]+)/i,'nofirst');
-  grab1(/İlk\s*Gol[^\n]*?Olmaz\s+([0-9]+[.,][0-9]+)/i,'nofirst');
-  grab1(/6\s*\+\s*Gol\s+([0-9]+[.,][0-9]+)/i,'g6');
-  const ms = t.match(/(?:Mac\s*Sonucu|Maç\s*Sonucu|1\s*X\s*2)[^\n]*?([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)\s+([0-9]+[.,][0-9]+)/i);
-  if(ms){
-    const h=parseFloat(ms[1].replace(',','.')), d=parseFloat(ms[2].replace(',','.')), a=parseFloat(ms[3].replace(',','.'));
-    if(h>1) odds.h=h; if(d>1) odds.d=d; if(a>1) odds.a=a;
-  }
-  return odds;
-}
-function chips(odds){
-  const names = {h:'MS 1',d:'MS X',a:'MS 2',u25:'2.5 alt',o25:'2.5 üst',u35:'3.5 alt',o35:'3.5 üst',btts:'KG var',nobtts:'KG yok',iyu15:'İY 1.5 alt',iyo15:'İY 1.5 üst',g6:'6+'};
-  return '<div class="chipwrap">'+Object.entries(odds).map(([k,v])=>'<span class="chip"><em>'+(names[k]||k)+'</em>'+v+'</span>').join('')+'</div>';
-}
-function splitYorum(raw){
-  raw = raw || '';
-  let tercih = '';
-  const m = raw.match(/\[\[ATASU_TERCIH\]\]([\s\S]*?)\[\[\/ATASU_TERCIH\]\]/);
-  if(m){
-    tercih = m[1].trim();
-    raw = raw.replace(m[0], '').trim();
-  }
-  raw = raw.replace(/\[\[\/?ATASU_TERCIH\]\]/g,'').trim();
-  return {yorum: raw, tercih};
-}
-function esc(s){
-  return String(s||'').replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-}
+function esc(s){return String(s||'').replace(/[&<>]/g,c=>({'&':'&','<':'<','>':'>'}[c]));}
 async function fetchT(url, opt, ms){
   const ctl = new AbortController();
-  const t = setTimeout(()=>ctl.abort(), ms||12000);
+  const t = setTimeout(()=>ctl.abort(), ms||15000);
   try{
     const r = await fetch(url, Object.assign({}, opt||{}, {signal: ctl.signal}));
     const j = await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(j.detail || j.error || ('HTTP '+r.status));
     return j;
   }catch(e){
-    if(String(e.name||e)==='AbortError') throw new Error('Zaman doldu. Maçkolik cevap vermedi.');
+    if(String(e.name||e)==='AbortError') throw new Error('Zaman doldu.');
     throw e;
-  }finally{
-    clearTimeout(t);
-  }
-}
-function clearAll(){
-  ['outModel','outExact','outP6','bulletinBox'].forEach(id=>$(id).innerHTML='');
-  $('link').value=''; $('lhQ').value='';
+  }finally{ clearTimeout(t); }
 }
 function localISO(){
   const d = new Date();
@@ -317,377 +89,80 @@ function localISO(){
 }
 async function loadBulletin(){
   const box = $('bulletinBox');
-  box.innerHTML = '<p class="mu">Bugünün İddaa programı çekiliyor.</p>';
-  showTab('bulten');
+  box.innerHTML = '<p class="mu">Bülten çekiliyor…</p>';
   try{
-    const iso = localISO();
-    const j = await fetchT('/api/bulletin?date='+iso, null, 15000);
+    const j = await fetchT('/api/bulletin?date='+localISO(), null, 15000);
     const rows = j.matches||[];
     if(!rows.length){
-      box.innerHTML = '<p class="no">Bugün İddaa programında açık maç yok. ('+esc(j.date||iso)+')</p>';
+      box.innerHTML = '<p class="no">Bugün açık İddaa satırı yok. ('+esc(j.date||'')+')</p>';
       return;
     }
-    renderBulletin(rows, j.date||iso);
+    window._bulten = rows;
+    let html = '<p class="hint">'+rows.length+' maç · '+esc(j.date||'')+'</p>';
+    rows.forEach((m,i)=>{
+      html += '<div class="b-card">'+
+        '<div class="saat">'+esc(m.time||'—')+'</div>'+
+        '<div><div class="tm">'+esc(m.home||'')+' — '+esc(m.away||'')+'</div>'+
+        '<div class="odds">'+(m.league?esc(m.league)+' · ':'')+(m.h||'—')+' / '+(m.d||'—')+' / '+(m.a||'—')+
+        (m.o25? ' · 2,5Ü '+m.o25:'')+(m.u25? ' · 2,5A '+m.u25:'')+'</div></div>'+
+        '<button type="button" class="b" data-i="'+i+'">Analiz</button></div>';
+    });
+    box.innerHTML = html;
+    box.onclick = ev=>{
+      const btn = ev.target.closest('button[data-i]');
+      if(!btn) return;
+      analyzeRow(rows[Number(btn.getAttribute('data-i'))]);
+    };
   }catch(e){
     box.innerHTML = '<p class="no">Bülten yok: '+esc(e.message||e)+'</p>';
   }
 }
-function renderBulletin(rows, label){
+async function analyzeRow(m){
+  if(!m) return;
   const box = $('bulletinBox');
-  if(!rows.length){ box.innerHTML = '<p class="no">Bülten boş.</p>'; return; }
-  window._bulten = rows;
-  const ligs = [...new Set(rows.map(r=>r.league||'').filter(Boolean))].sort();
-  box.innerHTML =
-    '<div class="b-tools">'+
-      '<input id="bQ" placeholder="Takım ara">'+
-      '<select id="bLig"><option value="">Tüm ligler ('+rows.length+')</option>'+
-        ligs.map(l=>'<option value="'+esc(l)+'">'+esc(l)+' · '+rows.filter(r=>r.league===l).length+'</option>').join('')+
-      '</select></div>'+
-    '<p class="hint" id="bCount">'+rows.length+' maç · '+esc(label)+'</p>'+
-    '<div id="bList"></div>';
-  function draw(){
-    const q = (($('bQ').value||'')+'').toLowerCase().trim();
-    const lig = $('bLig').value;
-    const sel = window._bultenSecim && window._bultenSecim.mac_id;
-    const filtered = rows.filter(m=>{
-      if(lig && m.league!==lig) return false;
-      if(!q) return true;
-      return ((m.home||'')+' '+(m.away||'')+' '+(m.league||'')).toLowerCase().indexOf(q)!==-1;
-    }).slice().sort((a,b)=>{
-      const key = m => {
-        const d = String(m.date||'');
-        const p = d.match(/(\d{2})\.(\d{2})\.(\d{4})/);
-        const iso = p ? (p[3]+'-'+p[2]+'-'+p[1]) : d;
-        const t = String(m.time||'99:99');
-        return iso+' '+t+' '+(m.home||'');
-      };
-      return key(a).localeCompare(key(b));
-    });
-    $('bCount').textContent = filtered.length+' / '+rows.length+' · saat sırası · '+label;
-    if(!filtered.length){ $('bList').innerHTML = '<p class="b-empty">Eşleşen maç yok.</p>'; return; }
-    const groups = {};
-    filtered.forEach(m=>{
-      const k = (m.date? m.date+' · ':'')+(m.time||'Saat yok');
-      (groups[k]=groups[k]||[]).push(m);
-    });
-    let html = '';
-    Object.keys(groups).forEach(k=>{
-      html += '<div class="b-liga">'+esc(k)+' · '+groups[k].length+' maç</div>';
-      groups[k].forEach(m=>{
-        const i = rows.indexOf(m);
-        const on = sel && String(sel)===String(m.mac_id) ? ' on':'';
-        html += '<div class="b-card'+on+'" data-i="'+i+'">'+
-          '<div class="saat">'+esc(m.time||'—')+'</div>'+
-          '<div><div class="tm">'+esc(m.home||'')+' — '+esc(m.away||'')+'</div>'+
-          '<div class="odds">'+(m.league?esc(m.league)+' · ':'')+(m.h||'—')+' / '+(m.d||'—')+' / '+(m.a||'—')+'</div></div>'+
-          '<button type="button" class="g pick" data-i="'+i+'">Tara</button></div>';
-      });
-    });
-    $('bList').innerHTML = html;
-  }
-  $('bQ').oninput = draw;
-  $('bLig').onchange = draw;
-  box.onclick = function(ev){
-    const btn = ev.target.closest('.pick, .b-card');
-    if(!btn) return;
-    ev.preventDefault();
-    const i = Number(btn.getAttribute('data-i'));
-    if(!Number.isFinite(i) || !rows[i]) return;
-    pickBulletin(rows[i]);
-  };
-  draw();
-}
-async function pickBulletin(m){
-  if(!m || !m.mac_id) return alert('mac_id yok');
-  window._bultenSecim = m;
-  $('lhQ').value = (m.home||'')+' - '+(m.away||'');
-  if(m.league) $('league').value = m.league;
-  $('outModel').innerHTML = '<p class="mu">Oranlar alınıyor… '+esc($('lhQ').value)+'</p>';
+  const hold = box.innerHTML;
+  box.insertAdjacentHTML('afterbegin', '<div class="verdict" id="rowAnaliz"><p class="mu">Analiz… '+esc(m.home)+' — '+esc(m.away)+'</p></div>');
   try{
-    const r = await fetch('/api/from-mac',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mac_id:String(m.mac_id), title:$('lhQ').value})});
-    const j = await r.json();
-    if(!r.ok) throw new Error(j.detail||'oran yok');
-    await analyzeText(j.text||'', j.title||$('lhQ').value);
-    showTab('model');
+    const j = await fetchT('/api/row', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(m)}, 12000);
+    const el = $('rowAnaliz');
+    if(!el) return;
+    const go = j.karar==='OYNA';
+    el.className = 'verdict '+(go?'go':'');
+    el.innerHTML = '<div class="kicker">'+(j.karar||'GEC')+(j.strategy? ' · '+esc(j.strategy):'')+'</div>'+
+      '<div class="v-title">'+esc((m.home||'')+' — '+(m.away||''))+'</div>'+
+      '<p class="yorum">'+esc((j.pick||'')+' '+(j.odds||'')+' — '+(j.why||j.script||''))+'</p>';
   }catch(e){
-    $('outModel').innerHTML = '<p class="no">'+(e.message||e)+'</p>';
-    showTab('model');
+    const el = $('rowAnaliz');
+    if(el) el.innerHTML = '<p class="no">'+esc(e.message||e)+'</p>';
+    else box.innerHTML = hold;
   }
 }
-function tableMatches(rows){
-  if(!rows||!rows.length) return '<p class="mu">Bu oranlara uyan geçmiş maç yok.</p>';
-  let body = '';
-  rows.slice(0,40).forEach(r=>{
-    body += '<tr><td>'+(r.date||'')+'</td><td>'+(r.league||'')+'</td><td>'+(r.home||'')+' — '+(r.away||'')+'</td><td>'+(r.ht||'—')+'</td><td>'+(r.ft||'—')+'</td></tr>';
-  });
-  return '<table><tr><th>Tarih</th><th>Lig</th><th>Maç</th><th>İY</th><th>MS</th></tr>'+body+'</table>';
-}
-
-async function runAll(){
-  const url = $('link').value.trim();
-  if(!url && window._bultenSecim){
-    return pickBulletin(window._bultenSecim);
-  }
-  if(!url) return alert('Üstteki link kutusuna Maçkolik yapıştır veya bültende satırın Tara butonuna bas');
-  $('outModel').innerHTML = '<p class="mu">Link okunuyor…</p>';
-  let text='', title='';
+async function runFilterScan(){
+  const box = $('outMasa');
+  box.innerHTML = '<p class="mu">Şablon taranıyor…</p>';
   try{
-    const r = await fetch('/api/match-link',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
-    const j = await r.json();
-    if(!r.ok) throw new Error(j.detail||'Link okunamadı');
-    text = j.text||''; title = j.title||'';
-    if(title && !$('lhQ').value) $('lhQ').value = title.replace(/\s*[|-].*$/,'').trim() || title;
-  }catch(e){
-    $('outModel').innerHTML = '<p class="no">'+(e.message||e)+'</p>';
-    return;
-  }
-  await analyzeText(text, title);
-}
-async function analyzeText(text, title){
-  const odds = parseBulletin(text);
-  if(Object.keys(odds).length<2){
-    $('outModel').innerHTML = '<p class="no">Linkten en az 2 oran çıkmadı.</p>';
-    return;
-  }
-  const matchTitle = ($('lhQ').value||title||'').trim();
-  const body = {odds, tolerance: Number($('tol').value||0.05), league:$('league').value, limit:Number($('lim').value||80), title: matchTitle};
-  const [briefR, exactR, p6R] = await Promise.all([
-    fetch('/api/brief',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),
-    fetch('/api/exact-odds',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({odds,tolerance:0})}),
-    fetch('/api/plus6',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      o25:odds.o25,o35:odds.o35,o45:odds.o45,g45:odds.g45,btts:odds.btts,
-      iy05:odds.iy05,nofirst:odds.nofirst,g6:odds.g6,iyu15:odds.iyu15,iyo15:odds.iyo15
-    })})
-  ]);
-  const brief = await briefR.json();
-  const exact = await exactR.json();
-  const p6 = await p6R.json();
-  if(!briefR.ok){ $('outModel').innerHTML = '<p class="no">'+(brief.detail||'hata')+'</p>'; return; }
-  const s = brief.stats||{};
-  const n = brief.sample||0;
-  const parts = splitYorum(brief.yorum||'');
-  const voice = brief.commentator || brief.coach || {};
-  const karar = (voice.karar||voice.stance||'').toUpperCase();
-  const go = karar==='OYNA' || karar==='BIRIM' || n>=8;
-  let html = '<div class="verdict '+(go?'go':'')+'">';
-  html += '<div class="kicker">Yorumcu · v'+(brief.version||'5.7')+' · '+(karar||'GEC')+'</div>';
-  html += '<div class="v-title">'+esc(title||'Maç')+'</div>';
-  html += '<p class="yorum">'+esc(voice.script||voice.text||brief.text||'')+'</p></div>';
-  if(voice.scoreline) html += '<p class="hint">Skor bandı '+esc(voice.scoreline)+(voice.kill?' · '+esc(voice.kill):'')+'</p>';
-  const src = brief.sources||{};
-  if(src.xg || src.standing===false){
-    html += '<p class="hint">Kaynak: tablo '+(src.standing?'ok':'yok')+' · xG '+(src.xg||'proxy')+' · n='+(src.history||n)+'</p>';
-  }
-  html += '<p class="hint">Kutular benzer maç yüzdesi. Yorumcu onları tek cümlede eritir.</p>';
-  html += '<div class="kpi">';
-  html += '<div class="k"><span>Eşleşen maç</span><b>'+(brief.matched||0)+'</b></div>';
-  html += '<div class="k"><span>2,5 üst geldi</span><b>'+(s['2,5 Üst']!=null?s['2,5 Üst']+'%':'—')+'</b></div>';
-  html += '<div class="k"><span>KG geldi</span><b>'+(s['KG Var']!=null?s['KG Var']+'%':'—')+'</b></div>';
-  html += '<div class="k"><span>2. yarı gol</span><b>'+(s['2.Y 1+ Gol']!=null?s['2.Y 1+ Gol']+'%':'—')+'</b></div></div>';
-  html += '<div class="mu">Okunan oran (yalnızca açık iddaa)</div>'+chips(odds);
-  if(parts.tercih){
-    html += '<div class="tercih"><div class="kicker">Tek iş</div><p>'+esc(parts.tercih)+'</p></div>';
-  }
-  if(brief.banko){
-    const b = brief.banko;
-    html += '<p class="hint">İç kapı '+esc(b.gates_yes)+'/'+esc(b.gates_total)+' · '+esc(b.label||'')+' — yorumcu bunu ayrıca saymaz.</p>';
-  }
-  const liveMin = Number(($('liveMin')||{}).value||0);
-  const liveScore = ($('liveScore')||{}).value||'';
-  if(liveMin){
-    html += '<p class="hint" id="liveHint">Canlı '+liveMin+'′ '+esc(liveScore)+' soruluyor…</p>';
-    fetch('/api/live-window',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      minute: liveMin, score: liveScore, pick_key: (voice.pick&&voice.pick.key)||null, pre_karar: karar
-    })}).then(r=>r.json()).then(j=>{
-      const el = $('liveHint');
-      if(el) el.textContent = (j.karar||'')+' · '+(j.idea||j.note||'');
-    }).catch(()=>{});
-  }
-  $('outModel').innerHTML = html;
-
-  let det = '';
-  const st = brief.standing||{};
-  if(st.ok){
-    det += '<div class="verdict"><div class="kicker">Maçkolik puan durumu</div>';
-    det += '<p class="v-sub">'+esc(st.season_label||'')+' · sezon '+esc(st.season_id||'')+'</p>';
-    function rowLine(r, tag){
-      if(!r) return '';
-      const fm = (r.form&&r.form.all)? ' · form '+r.form.all : '';
-      const uo = r.uo && r.uo.n!=null ? ' · 2.5Ü '+r.uo.ust+'/'+r.uo.n : '';
-      const kg = r.kg && r.kg.n!=null ? ' · KG '+r.kg.var+'/'+r.kg.n : '';
-      return tag+' '+r.pos+'. '+r.name+' '+r.played+'O '+r.w+'-'+r.d+'-'+r.l+' '+r.gf+'-'+r.ga+' '+r.pts+'p'+fm+uo+kg;
-    }
-    const an = st.analysis||{};
-    let extra = '';
-    if(an.exp_total!=null) extra += 'λ ev '+an.exp_home+' / dep '+an.exp_away+' = '+an.exp_total+'\n';
-    if(an.combo_o25!=null) extra += 'taraf 2.5Ü %'+an.combo_o25+(an.combo_kg!=null?' · taraf KG %'+an.combo_kg:'')+'\n';
-    if(an.npxg_total!=null) extra += 'npxG ev '+an.npxg_home+' / dep '+an.npxg_away+' = '+an.npxg_total+' ('+(an.npxg_src||'proxy')+')\n';
-    if(an.home_opta) extra += 'ev sut '+an.home_opta.shots_pg+' isabet '+an.home_opta.sot_pg+' npxG/m '+(an.home_opta.npxg_pg!=null?an.home_opta.npxg_pg:'—')+' TSO %'+an.home_opta.possession+' CS '+an.home_opta.clean_sheets+'\n';
-    if(an.away_opta) extra += 'dep sut '+an.away_opta.shots_pg+' isabet '+an.away_opta.sot_pg+' npxG/m '+(an.away_opta.npxg_pg!=null?an.away_opta.npxg_pg:'—')+' TSO %'+an.away_opta.possession+' CS '+an.away_opta.clean_sheets+'\n';
-    if(an.flags&&an.flags.length) extra += 'okuma: '+an.flags.join(' · ');
-    det += '<p class="yorum">'+esc(rowLine(st.home_row,'Ev'))+'\n'+esc(rowLine(st.away_row,'Dep'))+(extra?'\n'+esc(extra.trim()):'')+'</p></div>';
-  } else if(st.note){
-    det += '<p class="mu">Puan durumu: '+esc(st.note)+'</p>';
-  }
-  const picks = brief.open_picks||[];
-  if(picks.length){
-    det += '<div class="mu">Açık piyasa sıralaması (kapalı hatta bakılmaz)</div>';
-    picks.slice(0,6).forEach(p=>{
-      det += '<div class="chip">'+esc(p.name)+' '+p.odds+(p.ev!=null?' · EV '+p.ev:'')+(p.stand_note?' · '+esc(p.stand_note):'')+'</div>';
-    });
-  }
-  const exf = (st.extra||{});
-  if(exf.ok){
-    det += '<div class="verdict"><div class="kicker">football-data.co.uk</div>';
-    det += '<p class="v-sub">'+esc((exf.league_name||exf.league_code||'')+' · sezon '+(exf.season||''))+' · n '+(exf.sample_league||0)+'</p>';
-    det += '<p class="yorum">lig 2.5Ü %'+(exf.league_o25!=null?exf.league_o25:'—')+' · lig KG %'+(exf.league_kg!=null?exf.league_kg:'—');
-    if(exf.combo_o25!=null) det += '\nform 2.5Ü %'+exf.combo_o25+(exf.combo_kg!=null?' · form KG %'+exf.combo_kg:'');
-    if(exf.home_form) det += '\nev '+esc(exf.home_form.name)+' son '+exf.home_form.n+' · gol '+exf.home_form.gf_pg+'/'+exf.home_form.ga_pg;
-    if(exf.away_form) det += '\ndep '+esc(exf.away_form.name)+' son '+exf.away_form.n+' · gol '+exf.away_form.gf_pg+'/'+exf.away_form.ga_pg;
-    det += '</p></div>';
-  }
-  if(parts.yorum) det += '<p class="yorum" style="margin-top:14px">'+esc(parts.yorum)+'</p>';
-  $('outDetay').innerHTML = det || '<p class="mu">Detay yok.</p>';
-
-  let ex = '<p class="yorum">'+esc(parts.yorum)+'</p>';
-  if(parts.tercih) ex += '<div class="tercih"><div class="kicker">Tercih</div><p>'+esc(parts.tercih)+'</p></div>';
-  ex += '<p class="hint" style="margin-top:18px">Birebir aynı oran + benzer maç listesi</p>';
-  (exact.categories||[]).forEach(c=>{
-    ex += '<div class="mu">'+esc(c.category)+' · '+esc(c.status)+' · '+c.matched+'</div>';
-  });
-  ex += tableMatches(brief.matches||[]);
-  $('outExact').innerHTML = ex;
-
-  const cls = p6.compatibility_percent>=80?'ok': p6.compatibility_percent>=40?'mu':'no';
-  let phtml = chips(odds)+'<div class="k" style="margin:10px 0"><span class="'+cls+'">Uyumluluk %'+p6.compatibility_percent+'</span> · '+p6.matched_rules+'/'+p6.total_rules+'</div>';
-  (p6.rules||[]).forEach(x=>{
-    const val = x.value!=null ? x.value : ((x.values||[]).filter(v=>v!=null).join(' / ')||'-');
-    const rng = (x.range||[]).join('-');
-    phtml += '<div class="'+(x.match?'ok':'no')+'">'+(x.match?'OK':'X')+' '+x.name+' · '+val+' · ['+rng+']</div>';
-  });
-  $('outP6').innerHTML = phtml;
-}
-
-async function runOranScan(){
-  const box = $('outOran');
-  box.innerHTML = '<p class="mu">Bülten taranıyor…</p>';
-  showTab('oran');
-  const tol = Number($('oranTol').value||0.08);
-  try{
-    const r = await fetch('/api/oran-scan?tolerance='+tol+'&limit=24');
-    const j = await r.json();
-    if(!r.ok) throw new Error(j.detail||'tarama yok');
+    const j = await fetchT('/api/filter-scan', null, 20000);
     if(!j.matches||!j.matches.length){
-      box.innerHTML = '<p class="no">Açık MS oranı olan bülten satırı yok. Havuz '+esc(j.history_n)+'.</p>';
+      box.innerHTML = '<p class="no">Oturan şablon yok. Taranan '+(j.scanned||0)+'.</p>';
       return;
     }
-    let html = '<p class="hint">'+j.n+' maç · history '+j.history_n+' · tol ±'+j.tolerance+'</p>';
+    let html = '<p class="hint">'+j.n+' satır · taranan '+(j.scanned||0)+'</p>';
     j.matches.forEach(m=>{
-      const b = m.banko||{};
-      html += '<div class="verdict">';
-      html += '<div class="kicker">'+(m.league||'')+' · '+(m.kickoff||'')+' · n='+(m.sample||0)+'</div>';
-      html += '<div class="v-title">'+esc((m.home||'')+' — '+(m.away||''))+'</div>';
-      if(b.label) html += '<p class="v-sub">Banko '+esc(b.gates_yes)+'/'+esc(b.gates_total)+' · '+esc(b.label)+' · '+esc(b.karar||'')+'</p>';
-      html += '<div class="scroll"><table><tr><th>Market</th><th>Açılış</th><th>Kapanış</th><th>Drift</th><th>Kalıp</th><th>Model</th><th>Blend</th><th>EV</th></tr>';
-      (m.markets||[]).slice(0,6).forEach(x=>{
-        const evc = (x.ev!=null && x.ev>=0)?'ok':'no';
-        html += '<tr><td>'+esc(x.name)+'</td><td>'+(x.open!=null?x.open:'—')+'</td><td>'+(x.close!=null?x.close:'—')+'</td><td>'+(x.drift!=null?x.drift:'—')+'</td><td>'+(x.hist!=null?x.hist+'%':'—')+'</td><td>'+(x.model!=null?x.model+'%':'—')+'</td><td>'+(x.blend!=null?x.blend+'%':'—')+'</td><td class="'+evc+'">'+(x.ev!=null?x.ev:'—')+'</td></tr>';
-      });
-      html += '</table></div></div>';
+      html += '<div class="verdict go">'+
+        '<div class="kicker">'+(m.time||'')+' · '+esc(m.league||'')+'</div>'+
+        '<div class="v-title">'+esc(m.title||'')+'</div>'+
+        '<p class="yorum">'+esc((m.strategy||'')+' → '+(m.pick||'')+' '+(m.pick_odds||''))+'</p>'+
+        (m.why? '<p class="hint">'+esc(m.why)+'</p>':'')+
+        '</div>';
     });
     box.innerHTML = html;
   }catch(e){
     box.innerHTML = '<p class="no">'+esc(e.message||e)+'</p>';
   }
 }
-
-async function runUpdate(){
-  const h = $('updHint');
-  if(h) h.textContent = 'Güncelleniyor…';
-  try{
-    const r = await fetch('/api/update', {method:'POST'});
-    const j = await r.json();
-    if(!r.ok) throw new Error(j.detail||'hata');
-    if(h) h.textContent = 'Güncelleme: +'+j.added+' maç · havuz '+j.history_n+' · cache silindi '+j.cache_cleared+' · '+j.last;
-    localStorage.setItem('atasu_last_upd', j.last||'');
-  }catch(e){
-    if(h) h.textContent = 'Güncelleme alınamadı: '+e.message;
-  }
-}
-async function pingUpdate(){
-  try{
-    const r = await fetch('/api/update');
-    const j = await r.json();
-    const h = $('updHint');
-    if(h && j.last) h.textContent = 'Son otomatik hasat: '+j.last+' · havuz '+j.history_n;
-  }catch(_){}
-}
-pingUpdate();
-
-async function runFilterScan(){
-  const box = $('outMasa');
-  showTab('masa');
-  box.innerHTML = '<p class="mu">Bülten şablonlara vuruluyor…</p>';
-  try{
-    const j = await fetchT('/api/filter-scan', null, 20000);
-    if(!j.matches||!j.matches.length){
-      box.innerHTML = '<p class="no">Şablon oturmadı. Taranan '+ (j.scanned||0) +' / bülten '+(j.bulletin||0)+'.</p>';
-      return;
-    }
-    let html = '<p class="hint">'+j.n+' şablon · bugün '+esc(j.source||'')+' · taranan '+(j.scanned||0)+'</p>';
-    j.matches.forEach(m=>{
-      const o = m.odds||{};
-      html += '<div class="verdict go">';
-      html += '<div class="kicker">'+(m.time||'')+' · '+(m.date||'')+' · '+esc(m.league||'')+'</div>';
-      html += '<div class="v-title">'+esc(m.title||'')+'</div>';
-      const tags = (m.strategy? m.strategy+' → ':'')+(m.pick||'')+(m.pick_odds? ' '+m.pick_odds:'');
-      html += '<p class="yorum">'+esc(tags || ((m.profiles||[]).map(p=>p.selection).join(' | ')))+'</p>';
-      if(m.why) html += '<p class="hint">'+esc(m.why)+'</p>';
-      html += '<p class="hint">'+(o.h||'—')+' / '+(o.d||'—')+' / '+(o.a||'—');
-      if(o.o25) html += ' · 2,5Ü '+o.o25;
-      if(o.u25) html += ' · 2,5A '+o.u25;
-      html += '</p>';
-      if(m.mac_id) html += '<button type="button" class="g pickFilt" data-mac="'+esc(String(m.mac_id))+'" data-home="'+esc(m.home||'')+'" data-away="'+esc(m.away||'')+'">Tara</button>';
-      html += '</div>';
-    });
-    box.innerHTML = html;
-    box.onclick = function(ev){
-      const btn = ev.target.closest('.pickFilt');
-      if(!btn) return;
-      pickBulletin({mac_id: btn.getAttribute('data-mac'), home: btn.getAttribute('data-home'), away: btn.getAttribute('data-away')});
-    };
-  }catch(e){
-    box.innerHTML = '<p class="no">Şablon tarama: '+esc(e.message||e)+'</p>';
-  }
-}
-async function runDesk(){
-  const box = $('outMasa');
-  box.innerHTML = '<p class="mu">Masa kuruluyor… bülten + yorumcu.</p>';
-  showTab('masa');
-  try{
-    const j = await fetchT('/api/desk?limit=40', null, 20000);
-    if(!j.matches||!j.matches.length){
-      box.innerHTML = '<p class="no">Bugünün İddaa bülteninde şablon oturmadı. ('+esc(j.source||'')+')</p>';
-      return;
-    }
-    let html = '<p class="hint">'+j.n+' maç · '+esc(j.source||'')+' · yalnız bugün</p>';
-    j.matches.slice().sort((a,b)=>{
-      const ta = String(a.kickoff||a.time||'99:99');
-      const tb = String(b.kickoff||b.time||'99:99');
-      return ta.localeCompare(tb);
-    }).forEach(m=>{
-      html += '<div class="verdict '+(m.karar==='OYNA'||m.karar==='BIRIM'?'go':'')+'">';
-      html += '<div class="kicker">'+(m.kickoff||m.time||'')+' · '+(m.karar||'GEC')+' · '+(m.league||'')+'</div>';
-      html += '<div class="v-title">'+esc((m.home||'')+' — '+(m.away||''))+'</div>';
-      html += '<p class="yorum">'+esc((m.strategy? m.strategy+' · ':'')+(m.pick||'')+' '+(m.pick_odds||'')+' — '+(m.script||m.voice||m.why||''))+'</p>';
-      if(m.scoreline) html += '<p class="hint">skor '+esc(m.scoreline)+'</p>';
-      html += '</div>';
-    });
-    box.innerHTML = html;
-  }catch(e){
-    box.innerHTML = '<p class="no">Masa kurulamadı: '+esc(e.message||e)+'</p>';
-  }
-}
+fetch('/api/meta').then(r=>r.json()).then(m=>{
+  $('metaLine').textContent = 'v'+(m.version||'')+' · '+((m.filters||[]).length||9)+' şablon · bülten';
+}).catch(()=>{});
 </script>
 </body>
 </html>
