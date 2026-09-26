@@ -976,47 +976,14 @@ def indir_zip():
 @app.get("/api/meta")
 def meta():
     return {
+        "history_rows": len(HISTORY),
+        "completed_rows": sum(score(x.get("ft")) is not None for x in HISTORY),
+        "markets": MARKETS,
         "version": VERSION,
-        "filters": [p.get("id") for p in getattr(filters, "PROFILES", [])],
-        "rule": "Bülten + şablon. Havuz yok.",
-    }
-
-
-class RowReq(BaseModel):
-    home: str = ""
-    away: str = ""
-    title: str = ""
-    h: float | None = None
-    d: float | None = None
-    a: float | None = None
-    u25: float | None = None
-    o25: float | None = None
-    btts: float | None = None
-    o35: float | None = None
-    u35: float | None = None
-
-
-@app.post("/api/row")
-def api_row(req: RowReq):
-    q = {}
-    for k in ("h", "d", "a", "u25", "o25", "btts", "o35", "u35"):
-        v = getattr(req, k, None)
-        if v and float(v) > 1:
-            q[k] = float(v)
-    title = req.title or f"{req.home} - {req.away}".strip(" -")
-    st = strategy.pick(q, title) if strategy else {"karar": "GEC", "why": "şablon yok"}
-    voice = commentator.compose(q=q, title=title, n=0)
-    return {
-        "ok": True,
-        "title": title,
-        "karar": st.get("karar") or voice.get("karar"),
-        "pick": st.get("name") or ((voice.get("pick") or {}).get("name")),
-        "odds": st.get("odds"),
-        "strategy": st.get("label") or st.get("strategy"),
-        "why": st.get("why") or voice.get("script"),
-        "script": voice.get("script"),
-        "profiles": st.get("profiles") or [],
-        "version": VERSION,
+        "warning": None,
+        "rule": "Yorumcu tek iş konuşur.",
+        "ledger": (ROOT / "data" / "ledger.json").exists(),
+        "voice": "commentator",
     }
 
 
@@ -1904,8 +1871,12 @@ def narrative_yorum(s, matches, title="", league="", q=None, bw=None, p6=None, l
         p3.append(f"Exchange eşleşti: {m.get('home')}–{m.get('away')}.")
     elif title:
         p3.append("Exchange bu isimle açılmadı; kuponu teyit etmez.")
-    if p6:
-        pass
+    if p6 and p6.get("compatibility_percent") is not None:
+        pc = p6.get("compatibility_percent")
+        if pc >= 70:
+            p3.append(f"+6 bandı uyumlu (%{pc}).")
+        elif pc <= 35:
+            p3.append(f"+6 senaryosu değil (%{pc}).")
 
     lines = [" ".join(p1), "", " ".join(p2)]
     if p3:
@@ -2012,7 +1983,37 @@ def brief_from_odds(q, tol=0.05, league="", limit=200, title=""):
 
 
 def plus6_payload(q):
-    return {"ok": False, "compatibility_percent": 0, "matched_rules": 0, "total_rules": 0, "rules": []}
+    o45 = q.get("o45") if q.get("o45") is not None else q.get("g45")
+    rules = [
+        ("2,5 Üst", q.get("o25"), 1.20, 1.28),
+        ("3,5 Üst", q.get("o35"), 1.66, 1.89),
+        ("4,5 Üst / g45", o45, 2.64, 3.14),
+        ("KG Var", q.get("btts"), 1.22, 1.87),
+    ]
+    output = []
+    hit = 0
+    for name, v, lo, hi in rules:
+        m = v is not None and lo <= v <= hi
+        hit += bool(m)
+        output.append({"name": name, "value": v, "range": [lo, hi], "match": bool(m)})
+    last = (q.get("iy05") is not None and 1.05 <= q["iy05"] <= 1.08) or (
+        q.get("nofirst") is not None and 22.10 <= q["nofirst"] <= 26.00
+    )
+    if not last and q.get("g6") is not None and q["g6"] <= 9.5:
+        last = True
+    hit += bool(last)
+    output.append({
+        "name": "İY 0,5 / İlk Gol Olmaz / 6+ Gol proxy",
+        "values": [q.get("iy05"), q.get("nofirst"), q.get("g6")],
+        "ranges": [[1.05, 1.08], [22.10, 26.00], [None, 9.5]],
+        "match": bool(last),
+    })
+    return {
+        "matched_rules": hit,
+        "total_rules": 5,
+        "compatibility_percent": round(hit / 5 * 100),
+        "rules": output,
+    }
 
 
 class KellyReq(BaseModel):
