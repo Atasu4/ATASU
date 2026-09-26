@@ -1,119 +1,105 @@
-"""Referans oran profilleri.
-
-Türkiye-Fransa 25.09.2026 → deplasman kazanır
-Norveç-Danimarka 24.09.2026 → KG Var (3-2 bitti)
-"""
+"""Referans oran profilleri — 25-26.09.2026 kupon seti (Mackolik İddaa)."""
 from __future__ import annotations
 
-# İddaa kapanışına yakın bant. Dar tut: şablon sapmasın.
 PROFILES = [
     {
-        "id": "dep_tur_fra",
-        "name": "Deplasman (TR-FRA şablonu)",
-        "selection": "MS 2",
-        "key": "a",
-        "ref_match": "Türkiye - Fransa 25.09.2026 UNL",
-        "ref_odds": {"h": 7.04, "d": 5.55, "a": 1.46, "o25": 1.46, "u25": 3.18},
-        "need": [
-            ("a", 1.38, 1.58),
-            ("h", 5.80, 9.20),
-            ("d", 4.70, 6.40),
-        ],
-        "sample": 13,
-        "wins": 10,
-        "hit_percent": 76.9,
-        "why": "MS2 1.38-1.58, ev 5.80-9.20, X 4.70-6.40. TR-FRA fiyatı. Havuzda 13 maç / 10 deplasman.",
-    },
-    {
-        "id": "kg_nor_den",
-        "name": "KG Var (NOR-DEN şablonu)",
-        "selection": "KG Var",
-        "key": "btts",
-        "ref_match": "Norveç - Danimarka 24.09.2026 UNL 3-2",
-        "ref_odds": {"h": 1.47, "d": 3.86, "a": 4.24, "o25": 1.37, "u25": 2.25, "btts": 1.42},
-        "need": [
-            ("o25", 1.28, 1.50),
-            ("u25", 2.00, 2.55),
-        ],
-        "optional": [
-            ("btts", 1.32, 1.55),
-        ],
-        "sample": 119,
-        "wins": 69,
-        "hit_percent": 58.0,
-        "why": "2,5Ü 1.28-1.50 ve 2,5A 2.00-2.55 (NOR-DEN: Üst 1.37 / KG 1.42). KG oranı varsa 1.32-1.55. Havuzda 2,5Ü bandında KG %58.",
-    },
-    {
-        "id": "ev_bar_rac",
-        "name": "Ev + üst + KG (BAR-RAC 7-2)",
+        "id": "ms1_nijer",
+        "name": "MS 1 (Nijer-Lesotho)",
         "selection": "MS 1",
         "key": "h",
-        "keys": ["h", "o25", "btts"],
-        "ref_match": "Barcelona - Racing Santander 16.09.2026 7-2",
-        "ref_odds": {"h": 1.12, "d": 13.0, "a": 21.0, "o25": 1.11, "btts": 1.67},
-        "need": [
-            ("h", 1.05, 1.28),
-            ("a", 12.0, 35.0),
-            ("o25", 1.05, 1.22),
-        ],
-        "sample": 6,
-        "wins": 5,
-        "hit_percent": 83.3,
-        "why": "Kısa ev + ölü 2,5Ü. BAR-RAC İddaa/piyasa ~1.12 / 13 / 21, Üst ~1.11, KG ~1.67. 7-2. Havuz 6/5 ev.",
+        "keys": ["h"],
+        "ref_match": "Nijer - Lesotho 25.09.2026 AFCON 2-1",
+        "ref_odds": {"h": 1.55, "d": 3.03, "a": 4.03, "u25": 1.43, "o25": 1.92},
+        "need": [("h", 1.45, 1.70), ("d", 2.80, 3.30), ("a", 3.60, 4.50), ("o25", 1.70, 2.15)],
+        "why": "Mackolik 1.55 / 3.03 / 4.03. MS1. 2-1 bitti.",
     },
     {
-        "id": "dep_lev_bar",
-        "name": "Dep + üst + KG (LEV-BAR 2-4)",
-        "selection": "MS 2",
-        "key": "a",
-        "keys": ["a", "o25", "btts"],
-        "ref_match": "Levante - Barcelona 13.09.2026 2-4",
-        "ref_odds": {"h": 14.0, "d": 8.5, "a": 1.20, "o25": 1.22, "btts": 1.55},
-        "need": [
-            ("a", 1.12, 1.28),
-            ("h", 8.0, 18.0),
-            ("o25", 1.15, 1.32),
-        ],
-        "sample": 5,
-        "wins": 4,
-        "hit_percent": 80.0,
-        "why": "Kısa deplasman favori + gol. LEV-BAR ~14 / 8.5 / 1.20, Üst ~1.22. 2-4 KG. Havuz 5/4 MS2.",
-    },
-    {
-        "id": "ev_fb_eyup",
-        "name": "Ev + üst (FB-EYP 8-0)",
+        "id": "gol_ruanda",
+        "name": "Üst + KG (Ruanda-Liberya)",
         "selection": "2,5 Üst",
         "key": "o25",
-        "keys": ["h", "o25"],
-        "ref_match": "Fenerbahçe - Eyüpspor 20.09.2026 8-0",
-        "ref_odds": {"h": 1.19, "d": 7.32, "a": 15.25, "o25": 1.36, "u25": 2.54, "btts": 2.08, "nobtts": 1.44},
-        "need": [
-            ("h", 1.12, 1.28),
-            ("a", 10.0, 18.0),
-            ("o25", 1.28, 1.50),
-        ],
-        "sample": 15,
-        "wins": 10,
-        "hit_percent": 66.7,
-        "why": "İddaa: MS1 kapanışta düşmüş, X 7.32 / MS2 15.25, 2,5Ü 1.36, KG Yok 1.44. 8-0. Havuzda üst %67, ev %73. KG bu şablonda yok.",
+        "keys": ["o25", "o35", "btts"],
+        "ref_match": "Ruanda - Liberya 25.09.2026 AFCON 3-1",
+        "ref_odds": {"h": 1.56, "d": 2.91, "a": 4.19, "u25": 1.30, "o25": 2.23},
+        "need": [("h", 1.45, 1.70), ("u25", 1.22, 1.42), ("o25", 1.95, 2.55)],
+        "why": "Mackolik MS 1.56/2.91/4.19, 2,5A 1.30 / Ü 2.23. Kupon 2,5Ü+3,5Ü+KG. 3-1.",
     },
     {
-        "id": "iki_taraf_2",
-        "name": "İki taraf 2+ (haftalık bülten)",
+        "id": "o05_hellerup",
+        "name": "0,5 Üst (Hellerup-Roskilde)",
         "selection": "2,5 Üst",
         "key": "o25",
         "keys": ["o25"],
-        "ref_match": "21-25.09.2026 İddaa biten, her iki taraf ≥2 gol (53 maç / 36 oran)",
-        "ref_odds": {"fav": 1.63, "d": 3.46, "o25": 1.47},
-        "need": [
-            ("d", 3.20, 4.20),
-            ("o25", 1.35, 1.55),
-        ],
-        "fav": [1.35, 1.90],
-        "sample": 36,
-        "wins": 20,
-        "hit_percent": 55.6,
-        "why": "Son hafta iki taraf 2+ gol: favori 1.35-1.90, X 3.20-4.20, 2,5Ü 1.35-1.55. Medyan 1.63 / 3.46 / 1.47. İY KG bu bantta kilit değil. Tek iş 2,5 Üst.",
+        "ref_match": "Hellerup - Roskilde 25.09.2026 DAN2 1-1",
+        "ref_odds": {"h": 5.01, "d": 3.99, "a": 1.30, "u25": 2.07, "o25": 1.36},
+        "need": [("h", 4.50, 5.70), ("a", 1.22, 1.40), ("o25", 1.28, 1.48)],
+        "why": "Mackolik MS2 1.30, 2,5Ü 1.36. Kupon 0,5Ü (bültende 0,5 yok, 2,5Ü yakın). 1-1.",
+    },
+    {
+        "id": "u35_tur_fra",
+        "name": "3,5 Alt (TR-FRA)",
+        "selection": "3,5 Alt",
+        "key": "u35",
+        "keys": ["u35", "a"],
+        "ref_match": "Türkiye - Fransa 25.09.2026 UNL 0-1",
+        "ref_odds": {"h": 7.04, "d": 5.38, "a": 1.25, "u25": 2.91, "o25": 1.28},
+        "need": [("a", 1.18, 1.35), ("o25", 1.22, 1.38), ("h", 5.80, 8.50)],
+        "why": "Mackolik MS2 1.25, 2,5Ü 1.28. Kupon 3,5 Alt. 0-1.",
+    },
+    {
+        "id": "u35_hun_ukr",
+        "name": "3,5 Alt (MAC-UKR)",
+        "selection": "3,5 Alt",
+        "key": "u35",
+        "keys": ["u35", "u25"],
+        "ref_match": "Macaristan - Ukrayna 25.09.2026 UNL 0-1",
+        "ref_odds": {"h": 2.31, "d": 2.84, "a": 2.55, "u25": 1.53, "o25": 1.91},
+        "need": [("h", 2.10, 2.55), ("d", 2.60, 3.10), ("a", 2.30, 2.80), ("o25", 1.70, 2.15)],
+        "why": "Mackolik 2.31/2.84/2.55, 2,5Ü 1.91. Kupon 3,5 Alt. 0-1.",
+    },
+    {
+        "id": "msx_pol_bos",
+        "name": "MS X (POL-BOS)",
+        "selection": "MS X",
+        "key": "d",
+        "keys": ["d"],
+        "ref_match": "Polonya - Bosna Hersek 25.09.2026 UNL 0-0",
+        "ref_odds": {"h": 1.37, "d": 3.89, "a": 5.17, "u25": 1.93, "o25": 1.51},
+        "need": [("h", 1.28, 1.50), ("d", 3.50, 4.40), ("a", 4.50, 6.20)],
+        "why": "Mackolik 1.37/3.89/5.17, 2,5Ü 1.51. Kupon MS X + 0-0. 0-0.",
+    },
+    {
+        "id": "ust_ita_bel",
+        "name": "1,5/2,5 Üst (İTA-BEL)",
+        "selection": "2,5 Üst",
+        "key": "o25",
+        "keys": ["o25"],
+        "ref_match": "İtalya - Belçika 25.09.2026 UNL 0-2",
+        "ref_odds": {"h": 1.95, "d": 3.19, "a": 2.85, "u25": 1.96, "o25": 1.50},
+        "need": [("d", 2.95, 3.45), ("o25", 1.40, 1.62), ("h", 1.75, 2.20)],
+        "why": "Mackolik 1.95/3.19/2.85, 2,5Ü 1.50. Kupon 1,5Ü+2,5Ü. 0-2.",
+    },
+    {
+        "id": "u25_estrella",
+        "name": "2,5 Alt (Estrella-LP C)",
+        "selection": "2,5 Alt",
+        "key": "u25",
+        "keys": ["u25"],
+        "ref_match": "Estrella - Las Palmas C 26.09.2026 Tercera 1-1",
+        "ref_odds": {"h": 3.12, "d": 3.03, "a": 1.74, "u25": 1.70, "o25": 1.58},
+        "need": [("a", 1.55, 1.95), ("u25", 1.55, 1.90), ("o25", 1.45, 1.75)],
+        "why": "Mackolik 3.12/3.03/1.74, 2,5A 1.70. Kupon 2,5 Alt. 1-1.",
+    },
+    {
+        "id": "u25_grenada",
+        "name": "2,5 Alt (Grenada-Küba)",
+        "selection": "2,5 Alt",
+        "key": "u25",
+        "keys": ["u25"],
+        "ref_match": "Grenada - Küba 26.09.2026 CNL 0-3",
+        "ref_odds": {"h": 2.68, "d": 2.77, "a": 2.05, "u25": 1.44, "o25": 1.91},
+        "need": [("h", 2.40, 3.00), ("d", 2.50, 3.10), ("a", 1.85, 2.30), ("u25", 1.32, 1.58)],
+        "why": "Mackolik 2.68/2.77/2.05, 2,5A 1.44. Kupon 2,5 Alt. Bu maç 0-3 kaçtı.",
     },
 ]
 
@@ -128,25 +114,16 @@ def _odd(v):
 
 def match_profiles(q: dict | None) -> list[dict]:
     q = q or {}
-    hit, miss = [], []
+    hit = []
     for rule in PROFILES:
         checks = []
         ok = True
-        for key, lo, hi in rule["need"]:
+        for key, lo, hi in rule.get("need") or []:
             v = _odd(q.get(key))
             passed = v is not None and lo <= v <= hi
             if not passed:
                 ok = False
             checks.append({"key": key, "odds": v, "range": [lo, hi], "passed": passed})
-        fav_band = rule.get("fav")
-        if fav_band:
-            h, a = _odd(q.get("h")), _odd(q.get("a"))
-            fav = min([x for x in (h, a) if x is not None], default=None)
-            passed = fav is not None and fav_band[0] <= fav <= fav_band[1]
-            if not passed:
-                ok = False
-            checks.append({"key": "fav", "odds": fav, "range": fav_band, "passed": passed})
-        opt_ok = True
         for key, lo, hi in rule.get("optional") or []:
             v = _odd(q.get(key))
             if v is None:
@@ -154,16 +131,16 @@ def match_profiles(q: dict | None) -> list[dict]:
                 continue
             passed = lo <= v <= hi
             if not passed:
-                opt_ok = False
+                ok = False
             checks.append({"key": key, "odds": v, "range": [lo, hi], "passed": passed})
         row = {
-            **{k: rule[k] for k in ("id", "name", "selection", "key", "ref_match", "ref_odds",
-                                     "sample", "wins", "hit_percent", "why")},
+            **{k: rule[k] for k in ("id", "name", "selection", "key", "ref_match", "ref_odds", "why") if k in rule},
             "keys": rule.get("keys") or [rule.get("key")],
             "checks": checks,
-            "match": bool(ok and opt_ok),
+            "match": bool(ok),
         }
-        (hit if row["match"] else miss).append(row)
+        if row["match"]:
+            hit.append(row)
     return hit
 
 
@@ -172,6 +149,6 @@ def annotate(q: dict | None) -> dict:
     return {
         "ok": True,
         "hits": hits,
-        "labels": [x["id"] for x in hits],
-        "text": "; ".join(x["name"] for x in hits) if hits else None,
+        "labels": [x.get("id") for x in hits],
+        "text": "; ".join(x.get("name") or "" for x in hits) if hits else None,
     }
